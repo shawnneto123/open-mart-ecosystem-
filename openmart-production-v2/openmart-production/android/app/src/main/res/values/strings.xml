@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OpenMart</string>
+    <string name="title_activity_main">OpenMart</string>
+    <string name="package_name">com.openmart.shop</string>
+    <string name="custom_url_scheme">com.openmart.shop</string>
+</resources>

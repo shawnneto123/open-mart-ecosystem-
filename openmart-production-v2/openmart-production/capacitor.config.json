@@ -1,0 +1,31 @@
+{
+  "appId": "com.openmart.shop",
+  "appName": "OpenMart",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "limitsNavigationsToAppBoundDomains": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": true,
+      "backgroundColor": "#059669",
+      "androidSpinnerStyle": "large",
+      "androidScaleType": "centerInside",
+      "showSpinner": true,
+      "splashImmersive": true,
+      "spinnerColor": "#ffffff"
+    },
+    "StatusBar": {
+      "style": "light",
+      "backgroundColor": "#059669"
+    }
+  }
+}
