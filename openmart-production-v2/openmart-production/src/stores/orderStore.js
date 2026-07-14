@@ -14,21 +14,23 @@ const useOrderStore = create(
       fetchOrders: async () => {
         if (!isSupabaseConfigured) return;
         try {
-          const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .order('created_at', { ascending: false });
+          // Prefer camelCase ordering to match the admin DB schema; fallback to snake_case
+          let res = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
+          if (res.error) {
+            res = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+          }
+          const { data, error } = res;
           if (error) throw error;
           if (data) {
-            // Map snake_case DB columns to camelCase for the app
+            // Map DB columns to camelCase for the app
             const mapped = data.map((o) => ({
               ...o,
-              createdAt: o.created_at ?? o.createdAt,
-              updatedAt: o.updated_at ?? o.updatedAt,
-              paymentStatus: o.payment_status ?? o.paymentStatus,
-              shippingCost: o.shipping_cost ?? o.shippingCost,
-              paymentMethod: o.payment_method ?? o.paymentMethod,
-              customerInfo: o.customer_info ?? o.customerInfo,
+              createdAt: o.createdAt ?? o.created_at,
+              updatedAt: o.updatedAt ?? o.updated_at,
+              paymentStatus: o.paymentStatus ?? o.payment_status,
+              shippingCost: o.shippingCost ?? o.shipping_cost,
+              paymentMethod: o.paymentMethod ?? o.payment_method,
+              customerInfo: o.customerInfo ?? o.customer_info,
             }));
             set({ orders: mapped });
           }
@@ -41,34 +43,27 @@ const useOrderStore = create(
         // Get the current authenticated user's ID
         const currentUser = useAuthStore.getState().user;
 
+        // Build the order object using camelCase keys to match the admin DB schema
         const order = {
           id: `ORD_${Date.now()}`,
           user_id: currentUser?.id || null,
           items: orderData.items || [],
           status: 'pending',
-          payment_status: orderData.paymentStatus || 'unpaid',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          paymentStatus: orderData.paymentStatus || 'unpaid',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           subtotal: orderData.subtotal || 0,
           tax: orderData.tax || 0,
-          shipping_cost: orderData.shippingCost || 0,
+          shippingCost: orderData.shippingCost || 0,
           total: orderData.total || 0,
-          payment_method: orderData.paymentMethod || null,
-          customer_info: orderData.customerInfo || {},
+          paymentMethod: orderData.paymentMethod || null,
+          customerInfo: orderData.customerInfo || {},
           notes: orderData.notes || '',
           reference: orderData.reference || null,
         };
 
-        // Also keep camelCase aliases in local state for component compatibility
-        const orderLocal = {
-          ...order,
-          createdAt: order.created_at,
-          updatedAt: order.updated_at,
-          paymentStatus: order.payment_status,
-          shippingCost: order.shipping_cost,
-          paymentMethod: order.payment_method,
-          customerInfo: order.customer_info,
-        };
+        // Local state mirrors the DB shape (camelCase)
+        const orderLocal = { ...order };
 
         set((state) => ({
           orders: [orderLocal, ...state.orders],
@@ -77,8 +72,22 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
-            const { error } = await supabase.from('orders').insert([order]);
-            if (error) throw error;
+            // Try inserting with camelCase columns; if that fails, try snake_case fallback
+            let insertRes = await supabase.from('orders').insert([order]);
+            if (insertRes.error) {
+              console.warn('CamelCase insert failed, trying snake_case fallback:', insertRes.error.message || insertRes.error);
+              const snake = {
+                ...order,
+                payment_status: order.paymentStatus,
+                created_at: order.createdAt,
+                updated_at: order.updatedAt,
+                shipping_cost: order.shippingCost,
+                payment_method: order.paymentMethod,
+                customer_info: order.customerInfo,
+              };
+              insertRes = await supabase.from('orders').insert([snake]);
+            }
+            if (insertRes.error) throw insertRes.error;
           } catch (err) {
             console.error('Supabase insert order error:', err);
           }
