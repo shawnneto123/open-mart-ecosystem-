@@ -9,7 +9,8 @@ import {
   updateProduct, 
   deleteProduct, 
   Product, 
-  Order 
+  Order, 
+  SUPABASE_URL
 } from './services/supabase';
 import type { User } from '@supabase/supabase-js';
 import { formatNaira } from './utils/helpers';
@@ -293,6 +294,9 @@ export default function App() {
                       <Database className="w-4 h-4" />
                       <span>{isSupabaseConfigured ? 'Supabase Connected' : 'Database Offline'}</span>
                     </div>
+                      <div className="text-xs text-slate-400 ml-3 hidden md:block">
+                        {SUPABASE_URL ? new URL(SUPABASE_URL).host : 'no-supabase-url'}
+                      </div>
 
                     <button
                       onClick={refreshAll}
