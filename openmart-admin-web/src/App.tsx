@@ -148,7 +148,8 @@ export default function App() {
         { event: '*', schema: 'public', table: 'orders' },
         (payload) => {
           console.log('Realtime change detected in orders table:', payload);
-          loadOrders();
+          // Only refresh orders on INSERT to reduce noise
+          if (payload.eventType === 'INSERT') loadOrders();
 
           // Play a chime only for brand-new orders (if sound is enabled)
           if (payload.eventType === 'INSERT' && soundEnabled) {
@@ -178,17 +179,9 @@ export default function App() {
           }
         }
       )
-      .subscribe();
-
-    // Debug: log subscription object to help trace why realtime events may not arrive
-    try {
-      console.log('Orders realtime subscription created:', channel);
-      // If the channel exposes a 'state' or similar, log it
-      // @ts-ignore
-      if (channel && (channel as any).state) console.log('Channel state:', (channel as any).state);
-    } catch (e) {
-      console.warn('Could not inspect realtime channel:', e);
-    }
+      .subscribe((status) => {
+        console.log('Orders channel subscribe status:', status);
+      });
 
     return () => {
       supabase?.removeChannel(channel);
