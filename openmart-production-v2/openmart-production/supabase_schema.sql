@@ -140,6 +140,10 @@ CREATE POLICY "Staff can read all orders" ON public.orders
 CREATE POLICY "Staff can update any order" ON public.orders
     FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
+-- Migration: ensure updated_at column exists for consistency
+ALTER TABLE IF EXISTS public.orders
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 
 -- ============================================================
 -- Storage bucket policies for product images

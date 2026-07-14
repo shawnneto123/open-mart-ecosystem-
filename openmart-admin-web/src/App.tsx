@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { 
   supabase,
@@ -33,6 +33,7 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
 
   // Authentication State
   const [user, setUser] = useState<User | null>(null);
@@ -111,7 +112,7 @@ export default function App() {
     }
   };
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     if (!user) return;
     setIsLoadingOrders(true);
     try {
@@ -122,13 +123,13 @@ export default function App() {
     } finally {
       setIsLoadingOrders(false);
     }
-  };
+  }, [user]);
 
   const refreshAll = useCallback(() => {
     if (!user) return;
     loadProducts();
     loadOrders();
-  }, [user]);
+  }, [user, loadOrders]);
 
   // Reload products/orders whenever the user changes/logs in
   useEffect(() => {
@@ -137,72 +138,95 @@ export default function App() {
     }
   }, [user, refreshAll]);
 
+  // Keep a ref for soundEnabled so toggling sound never tears down the subscription
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
+  // 30-second polling fallback — orders always refresh even if Realtime silently drops
+  useEffect(() => {
+    if (!user) return;
+    const poll = setInterval(() => loadOrders(), 30000);
+    return () => clearInterval(poll);
+  }, [user, loadOrders]);
+
   // Real-time Supabase subscription for live orders
+  // Deps: [user, loadOrders] only — sound changes do NOT restart the channel
   useEffect(() => {
     if (!supabase || !user) return;
 
-    const channel = supabase
-      .channel('orders-channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        (payload) => {
-          console.log('Realtime change detected in orders table:', payload);
-          // Only refresh orders on INSERT to reduce noise
-          if (payload.eventType === 'INSERT') loadOrders();
+    // destroyed flag stops the reconnect loop when the component unmounts
+    let destroyed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-          // Play a chime only for brand-new orders (if sound is enabled)
-          if (payload.eventType === 'INSERT' && soundEnabled) {
-            try {
-              const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
-              const osc1 = audioCtx.createOscillator();
-              const gain1 = audioCtx.createGain();
-              osc1.connect(gain1);
-              gain1.connect(audioCtx.destination);
-              osc1.type = 'sine';
-              osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-              gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
-              osc1.start();
-              osc1.stop(audioCtx.currentTime + 0.15);
-              setTimeout(() => {
-                const osc2 = audioCtx.createOscillator();
-                const gain2 = audioCtx.createGain();
-                osc2.connect(gain2);
-                gain2.connect(audioCtx.destination);
-                osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(880, audioCtx.currentTime);
-                gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                osc2.start();
-                osc2.stop(audioCtx.currentTime + 0.25);
-              }, 120);
-            } catch (_) { /* audio not supported */ }
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log('Orders channel subscribe status:', status);
-        try {
-          // when channel unexpectedly closes, attempt a gentle reconnect
-          if (String(status).toUpperCase().includes('CLOSED')) {
-            console.warn('Orders channel closed; attempting re-subscribe in 1s');
-            setTimeout(() => {
+    const buildChannel = () => {
+      if (destroyed || !supabase) return;
+      setRealtimeStatus('connecting');
+
+      const ch = supabase
+        .channel(`orders-realtime-${Date.now()}`) // unique name avoids stale channel conflicts
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'orders' },
+          (payload) => {
+            console.log('Realtime change detected in orders table:', payload);
+            loadOrders();
+
+            // Play chime — read from ref so we never need soundEnabled in deps
+            if (soundEnabledRef.current) {
               try {
-                // re-subscribe the channel (safe no-op if already subscribed)
-                channel.subscribe((s) => console.log('Re-subscribe callback status:', s));
-              } catch (e) {
-                console.error('Error while attempting channel re-subscribe:', e);
-              }
-            }, 1000);
+                const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+                const osc1 = audioCtx.createOscillator();
+                const gain1 = audioCtx.createGain();
+                osc1.connect(gain1);
+                gain1.connect(audioCtx.destination);
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+                gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc1.start();
+                osc1.stop(audioCtx.currentTime + 0.15);
+                setTimeout(() => {
+                  const osc2 = audioCtx.createOscillator();
+                  const gain2 = audioCtx.createGain();
+                  osc2.connect(gain2);
+                  gain2.connect(audioCtx.destination);
+                  osc2.type = 'sine';
+                  osc2.frequency.setValueAtTime(880, audioCtx.currentTime);
+                  gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                  osc2.start();
+                  osc2.stop(audioCtx.currentTime + 0.25);
+                }, 120);
+              } catch (_) { /* audio not supported */ }
+            }
           }
-        } catch (e) {
-          console.warn('Error processing subscribe status:', e);
-        }
-      });
+        )
+        .subscribe((status) => {
+          console.log('Orders channel status:', status);
+          if (destroyed) return;
+
+          if (status === 'SUBSCRIBED') {
+            setRealtimeStatus('live');
+          } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+            setRealtimeStatus('error');
+            console.warn(`Orders channel ${status} — rebuilding in 3s...`);
+            // Remove the broken channel then build a fresh one after a delay
+            supabase?.removeChannel(ch).catch(() => null);
+            reconnectTimer = setTimeout(() => {
+              if (!destroyed) buildChannel();
+            }, 3000);
+          }
+        });
+
+      return ch;
+    };
+
+    let activeChannel = buildChannel();
 
     return () => {
-      supabase?.removeChannel(channel);
+      destroyed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (activeChannel && supabase) supabase.removeChannel(activeChannel).catch(() => null);
     };
-  }, [user, soundEnabled]);
+  }, [user, loadOrders]);
 
   // Modal Actions
   const handleOpenAddModal = () => {
@@ -312,6 +336,20 @@ export default function App() {
                     }`}>
                       <Database className="w-4 h-4" />
                       <span>{isSupabaseConfigured ? 'Supabase Connected' : 'Database Offline'}</span>
+                    </div>
+                    {/* Realtime connection status badge */}
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
+                      realtimeStatus === 'live'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        : realtimeStatus === 'error'
+                        ? 'bg-red-50 text-red-700 border-red-100'
+                        : 'bg-amber-50 text-amber-700 border-amber-100'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${
+                        realtimeStatus === 'live' ? 'bg-emerald-500 animate-pulse' :
+                        realtimeStatus === 'error' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'
+                      }`} />
+                      {realtimeStatus === 'live' ? 'Live Orders' : realtimeStatus === 'error' ? 'Realtime Error' : 'Connecting...'}
                     </div>
                       <div className="text-xs text-slate-400 ml-3 hidden md:block">
                         {SUPABASE_URL ? new URL(SUPABASE_URL).host : 'no-supabase-url'}

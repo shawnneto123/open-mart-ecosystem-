@@ -199,22 +199,20 @@ export async function fetchOrders(): Promise<Order[]> {
     return [];
   }
 
-  // Prefer camelCase ordering (some projects use camelCase columns).
-  // Try camelCase first to avoid a PostgREST 400 when `created_at` doesn't exist.
-  let result = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
+  // DB schema uses snake_case — order by created_at directly
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-  if (result.error) {
-    // Fallback to snake_case if camelCase doesn't exist
-    result = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+  if (error) {
+    console.error('Error fetching orders:', error);
+    throw error;
   }
 
-  if (result.error) {
-    console.error('Error fetching orders:', result.error);
-    throw result.error;
-  }
-
-  return (result.data || []).map(normalizeOrder);
+  return (data || []).map(normalizeOrder);
 }
+
 
 
 

@@ -14,23 +14,21 @@ const useOrderStore = create(
       fetchOrders: async () => {
         if (!isSupabaseConfigured) return;
         try {
-          // Prefer camelCase ordering to match the admin DB schema; fallback to snake_case
-          let res = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
-          if (res.error) {
-            res = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-          }
-          const { data, error } = res;
+          const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .order('created_at', { ascending: false });
           if (error) throw error;
           if (data) {
-            // Map DB columns to camelCase for the app
+            // Map snake_case DB columns to camelCase for the UI
             const mapped = data.map((o) => ({
               ...o,
-              createdAt: o.createdAt ?? o.created_at,
-              updatedAt: o.updatedAt ?? o.updated_at,
-              paymentStatus: o.paymentStatus ?? o.payment_status,
-              shippingCost: o.shippingCost ?? o.shipping_cost,
-              paymentMethod: o.paymentMethod ?? o.payment_method,
-              customerInfo: o.customerInfo ?? o.customer_info,
+              createdAt: o.created_at ?? o.createdAt,
+              updatedAt: o.updated_at ?? o.updatedAt,
+              paymentStatus: o.payment_status ?? o.paymentStatus,
+              shippingCost: o.shipping_cost ?? o.shippingCost,
+              paymentMethod: o.payment_method ?? o.paymentMethod,
+              customerInfo: o.customer_info ?? o.customerInfo,
             }));
             set({ orders: mapped });
           }
@@ -42,16 +40,17 @@ const useOrderStore = create(
       createOrder: async (orderData) => {
         // Get the current authenticated user's ID
         const currentUser = useAuthStore.getState().user;
+        const now = new Date().toISOString();
 
-        // Build the order object using camelCase keys to match the admin DB schema
-        const order = {
+        // Local state object uses camelCase (for UI display)
+        const orderLocal = {
           id: `ORD_${Date.now()}`,
           user_id: currentUser?.id || null,
           items: orderData.items || [],
           status: 'pending',
           paymentStatus: orderData.paymentStatus || 'unpaid',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: now,
+          updatedAt: now,
           subtotal: orderData.subtotal || 0,
           tax: orderData.tax || 0,
           shippingCost: orderData.shippingCost || 0,
@@ -62,9 +61,6 @@ const useOrderStore = create(
           reference: orderData.reference || null,
         };
 
-        // Local state mirrors the DB shape (camelCase)
-        const orderLocal = { ...order };
-
         set((state) => ({
           orders: [orderLocal, ...state.orders],
           currentOrder: orderLocal,
@@ -72,22 +68,31 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
-            // Try inserting with camelCase columns; if that fails, try snake_case fallback
-            let insertRes = await supabase.from('orders').insert([order]);
-            if (insertRes.error) {
-              console.warn('CamelCase insert failed, trying snake_case fallback:', insertRes.error.message || insertRes.error);
-              const snake = {
-                ...order,
-                payment_status: order.paymentStatus,
-                created_at: order.createdAt,
-                updated_at: order.updatedAt,
-                shipping_cost: order.shippingCost,
-                payment_method: order.paymentMethod,
-                customer_info: order.customerInfo,
-              };
-              insertRes = await supabase.from('orders').insert([snake]);
+            // DB schema uses snake_case columns — always write snake_case to Supabase
+            const dbRow = {
+              id: orderLocal.id,
+              user_id: orderLocal.user_id,
+              items: orderLocal.items,
+              status: orderLocal.status,
+              payment_status: orderLocal.paymentStatus,
+              created_at: now,
+              updated_at: now,
+              subtotal: orderLocal.subtotal,
+              tax: orderLocal.tax,
+              shipping_cost: orderLocal.shippingCost,
+              total: orderLocal.total,
+              payment_method: orderLocal.paymentMethod,
+              customer_info: orderLocal.customerInfo,
+              notes: orderLocal.notes,
+              reference: orderLocal.reference,
+            };
+
+            const { error } = await supabase.from('orders').insert([dbRow]);
+            if (error) {
+              console.error('Supabase insert order error:', error);
+            } else {
+              console.log('Order inserted to Supabase successfully:', orderLocal.id);
             }
-            if (insertRes.error) throw insertRes.error;
           } catch (err) {
             console.error('Supabase insert order error:', err);
           }
@@ -107,10 +112,11 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
-            await supabase
+            const { error } = await supabase
               .from('orders')
               .update({ status, updated_at: new Date().toISOString() })
               .eq('id', orderId);
+            if (error) throw error;
           } catch (err) {
             console.error('Supabase update order status error:', err);
           }
@@ -128,10 +134,11 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
-            await supabase
+            const { error } = await supabase
               .from('orders')
               .update({ payment_status: paymentStatus, updated_at: new Date().toISOString() })
               .eq('id', orderId);
+            if (error) throw error;
           } catch (err) {
             console.error('Supabase update payment status error:', err);
           }
