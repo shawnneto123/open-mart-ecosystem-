@@ -217,33 +217,82 @@ export async function fetchOrders(): Promise<Order[]> {
 export async function updateOrderStatus(orderId: string, status: Order['status']): Promise<Order | null> {
   if (!supabase) return null;
   const now = new Date().toISOString();
-  const { data, error } = await supabase
+
+  // Try updating with snake_case timestamp first (common Postgres style)
+  let result = await supabase
     .from('orders')
     .update({ status, updated_at: now })
     .eq('id', orderId)
     .select();
 
-  if (error) {
-    console.error(`Error updating order status for ${orderId}:`, error);
-    throw error;
+  // If the schema doesn't have `updated_at`, fall back to camelCase or omit timestamp
+  if (result.error) {
+    const msg = String(result.error.message || result.error);
+    if (/could not find the 'updated_at' column/i.test(msg) || /column "updated_at" does not exist/i.test(msg)) {
+      // Try camelCase
+      result = await supabase
+        .from('orders')
+        .update({ status, updatedAt: now })
+        .eq('id', orderId)
+        .select();
+    }
   }
-  return data?.[0] ? normalizeOrder(data[0]) : null;
+
+  // Last resort: try without any timestamp field
+  if (result.error) {
+    result = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', orderId)
+      .select();
+  }
+
+  if (result.error) {
+    console.error(`Error updating order status for ${orderId}:`, result.error);
+    throw result.error;
+  }
+
+  return result.data?.[0] ? normalizeOrder(result.data[0]) : null;
 }
 
 export async function updatePaymentStatus(orderId: string, paymentStatus: Order['paymentStatus']): Promise<Order | null> {
   if (!supabase) return null;
   const now = new Date().toISOString();
-  const { data, error } = await supabase
+
+  // Try snake_case first
+  let result = await supabase
     .from('orders')
     .update({ payment_status: paymentStatus, updated_at: now })
     .eq('id', orderId)
     .select();
 
-  if (error) {
-    console.error(`Error updating payment status for ${orderId}:`, error);
-    throw error;
+  if (result.error) {
+    const msg = String(result.error.message || result.error);
+    if (/could not find the 'updated_at' column/i.test(msg) || /column "updated_at" does not exist/i.test(msg)) {
+      // Try camelCase
+      result = await supabase
+        .from('orders')
+        .update({ paymentStatus: paymentStatus, updatedAt: now })
+        .eq('id', orderId)
+        .select();
+    }
   }
-  return data?.[0] ? normalizeOrder(data[0]) : null;
+
+  // Fallback without timestamp
+  if (result.error) {
+    result = await supabase
+      .from('orders')
+      .update({ payment_status: paymentStatus })
+      .eq('id', orderId)
+      .select();
+  }
+
+  if (result.error) {
+    console.error(`Error updating payment status for ${orderId}:`, result.error);
+    throw result.error;
+  }
+
+  return result.data?.[0] ? normalizeOrder(result.data[0]) : null;
 }
 
 // ----------------------------------------------------
