@@ -22,6 +22,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep link: Custom URI scheme for Supabase email confirmation -->
+            <!-- Handles: com.openmart.shop://auth/callback -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.openmart.shop" />
+            </intent-filter>
+
+            <!-- Deep link: HTTPS App Link for Supabase email confirmation -->
+            <!-- Handles: https://com.openmart.shop/auth/callback -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="com.openmart.shop" />
+            </intent-filter>
+
         </activity>
 
         <provider

@@ -25,6 +25,37 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
+    // --- Deep Link / Email Confirmation Handler ---
+    // When Supabase sends a confirmation email and the user taps the link,
+    // the app is opened with tokens in the URL hash (e.g. #access_token=...&type=signup).
+    // We parse these here and call setSession() so the user is logged in automatically.
+    const handleDeepLinkTokens = async () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token')) {
+        const params = new URLSearchParams(hash.replace('#', ''));
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+        const type = params.get('type');
+
+        if (access_token && refresh_token) {
+          console.log('Deep link token detected, type:', type);
+          const { data, error } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+          if (error) {
+            console.error('Failed to set session from deep link:', error.message);
+          } else if (data?.user) {
+            console.log('Session set from deep link, user:', data.user.email);
+            // Clear the hash from URL so it doesn't linger
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      }
+    };
+
+    handleDeepLinkTokens();
+
     // Listen for auth state changes from Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Mobile App Auth Event:', event);

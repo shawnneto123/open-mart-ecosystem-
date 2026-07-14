@@ -45,23 +45,54 @@ export default function App() {
       return;
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
+    // Force signout if non-staff somehow gets logged in
+    const checkStaffSession = async () => {
+      if (!supabase) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email || '';
+      const isStaff = email.toLowerCase().includes('staff');
+      if (session && !isStaff) {
+        await supabase.auth.signOut();
+        setUser(null);
+        navigate('/login', { replace: true });
+      } else {
+        setUser(session?.user || null);
+      }
       setCheckingAuth(false);
-    });
+    };
+
+    checkStaffSession();
 
     // Subscribe to auth state updates
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Admin Portal Auth Event:', event, session?.user?.email);
-      setUser(session?.user || null);
-      if (!session) {
-        navigate('/login', { replace: true });
-      }
-    });
+    let subscription: any = null;
+    if (supabase) {
+      const { data } = supabase.auth.onAuthStateChange(async (_, session) => {
+        if (session?.user) {
+          const userEmail = session.user.email || '';
+          
+          // Strict safety check: verify user email includes 'staff'
+          const isStaff = userEmail.toLowerCase().includes('staff');
+
+          if (supabase && session && !isStaff) {
+            await supabase.auth.signOut();
+            setUser(null);
+            navigate('/login', { replace: true });
+          } else {
+            setUser(session?.user || null);
+            if (!session) {
+              navigate('/login', { replace: true });
+            }
+          }
+        } else {
+          setUser(null);
+          navigate('/login', { replace: true });
+        }
+      });
+      subscription = data.subscription;
+    }
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, [navigate]);
 

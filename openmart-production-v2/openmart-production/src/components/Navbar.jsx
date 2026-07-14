@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ShoppingCart, Menu, X, Home, Package, LogOut, LogIn, User } from 'lucide-react'
+import { ShoppingCart, Menu, X, Home, Package, LogOut, LogIn, User, RotateCw } from 'lucide-react'
 import { useCartStore } from '../stores/cartStore'
 import { useAuthStore } from '../stores/authStore'
 
@@ -58,6 +58,15 @@ export default function Navbar() {
 
           {/* Cart & Mobile Menu Button */}
           <div className="flex items-center space-x-4">
+            {/* Reload App Button */}
+            <button
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition"
+              title="Reload App"
+            >
+              <RotateCw size={14} className="animate-spin-slow" />
+              <span className="hidden sm:inline">Reload</span>
+            </button>
             {isAuthenticated ? (
               <button
                 onClick={() => logout()}
@@ -141,6 +150,18 @@ export default function Navbar() {
                 <span>Login</span>
               </Link>
             )}
+            
+            {/* Mobile Reload */}
+            <button
+              onClick={() => {
+                closeMenu()
+                window.location.reload()
+              }}
+              className="w-full flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 mt-2 border-t pt-4"
+            >
+              <RotateCw size={18} />
+              <span>Reload App</span>
+            </button>
           </div>
         )}
       </div>

@@ -30,16 +30,15 @@ export default function Login() {
       if (authError) throw authError;
 
       if (data?.user) {
-        const userRole = data.user.user_metadata?.role;
         const userEmail = data.user.email || '';
         
-        // Safety check: verify user role is staff or admin
-        const isStaff = userRole === 'staff' || userRole === 'admin' || userEmail.includes('staff');
+        // Strict safety check: verify user email includes 'staff'
+        const isStaff = userEmail.toLowerCase().includes('staff');
         
-        if (userRole && !isStaff) {
-          // Sign out immediately if they are a customer trying to access the admin portal
+        if (!isStaff) {
+          // Sign out immediately if they do not have staff email
           await supabase.auth.signOut();
-          setError('Access Denied: You do not have staff/admin administrative permissions.');
+          setError('Access Denied: You do not have staff permissions (staff email required).');
         } else {
           // Success: Navigate to dashboard
           navigate('/', { replace: true });

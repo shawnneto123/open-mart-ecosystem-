@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Order, updateOrderStatus, updatePaymentStatus } from '../services/supabase';
+import { Order, updateOrderStatus, updatePaymentStatus, supabase } from '../services/supabase';
 import { formatNaira } from '../utils/helpers';
 import { formatDistanceToNow } from 'date-fns';
 import { 
@@ -33,6 +33,7 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundE
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [newOrderAlert, setNewOrderAlert] = useState<boolean>(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // Auto-select first order whenever the list changes
   useEffect(() => {
@@ -59,8 +60,22 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundE
     try {
       await updateOrderStatus(orderId, status);
       onOrderUpdated();
+      setErrorMsg('');
     } catch (err) {
-      alert('Failed to update order status');
+      console.error('Update status error:', err);
+      let msg = '';
+      if (err && typeof err === 'object' && 'message' in (err as any)) {
+        msg = (err as any).message;
+      } else if (typeof err === 'string') {
+        msg = err;
+      } else {
+        try { msg = JSON.stringify(err); } catch { msg = String(err); }
+      }
+      setErrorMsg(`Failed to update order status: ${msg}`);
+      // If permission/auth issue, suggest re-login
+      if (msg && /permission|authorize|auth|not authorized|401/i.test(msg)) {
+        setErrorMsg((prev) => prev + ' — You may need to re-login.');
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -72,8 +87,21 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundE
     try {
       await updatePaymentStatus(orderId, paymentStatus);
       onOrderUpdated();
+      setErrorMsg('');
     } catch (err) {
-      alert('Failed to update payment status');
+      console.error('Update payment error:', err);
+      let msg = '';
+      if (err && typeof err === 'object' && 'message' in (err as any)) {
+        msg = (err as any).message;
+      } else if (typeof err === 'string') {
+        msg = err;
+      } else {
+        try { msg = JSON.stringify(err); } catch { msg = String(err); }
+      }
+      setErrorMsg(`Failed to update payment status: ${msg}`);
+      if (msg && /permission|authorize|auth|not authorized|401/i.test(msg)) {
+        setErrorMsg((prev) => prev + ' — You may need to re-login.');
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -198,6 +226,13 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundE
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-14rem)] overflow-hidden animate-fadeIn">
+      {errorMsg && (
+        <div className="w-full px-4">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            {errorMsg}
+          </div>
+        </div>
+      )}
       {/* Left List Pane */}
       <div className="w-full lg:w-5/12 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
         {/* Banner Alert for new orders */}
@@ -247,6 +282,24 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundE
               <option value="completed">✅ Completed</option>
               <option value="cancelled">❌ Cancelled</option>
             </select>
+            <button
+              onClick={async () => {
+                try {
+                  // Sign out to force re-auth and clear any stale session
+                  if (supabase) {
+                    await supabase.auth.signOut();
+                  }
+                } catch (err) {
+                  console.error('Error signing out:', err);
+                }
+                // Redirect to login page to re-authenticate
+                window.location.href = '/login';
+              }}
+              className="ml-2 text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg bg-white hover:bg-slate-50"
+              title="Re-authenticate / Refresh session"
+            >
+              Re-authenticate
+            </button>
           </div>
         </div>
 
