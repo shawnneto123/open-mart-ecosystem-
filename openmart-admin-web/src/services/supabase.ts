@@ -199,12 +199,13 @@ export async function fetchOrders(): Promise<Order[]> {
     return [];
   }
 
-  // Try snake_case column name first (Postgres default), then camelCase fallback
-  let result = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+  // Prefer camelCase ordering (some projects use camelCase columns).
+  // Try camelCase first to avoid a PostgREST 400 when `created_at` doesn't exist.
+  let result = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
 
   if (result.error) {
-    // Fallback: column may be stored as camelCase
-    result = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
+    // Fallback to snake_case if camelCase doesn't exist
+    result = await supabase.from('orders').select('*').order('created_at', { ascending: false });
   }
 
   if (result.error) {
