@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useOrderStore } from '../stores/orderStore';
 import { User, Phone, MapPin, KeyRound, ShoppingBag, CreditCard, ChevronRight, CheckCircle, AlertCircle } from 'lucide-react';
@@ -30,6 +30,7 @@ export default function ProfilePage() {
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // Calculate customer orders & statistics
   const customerOrders = useMemo(() => {
@@ -47,7 +48,7 @@ export default function ProfilePage() {
     };
   }, [customerOrders]);
 
-  const handleProfileSubmit = (e) => {
+  const handleProfileSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -57,21 +58,26 @@ export default function ProfilePage() {
       return;
     }
 
-    const result = updateCustomerProfile(user.email, {
-      name: profileData.name.trim(),
-      phone: profileData.phone.trim(),
-      address: profileData.address.trim(),
-    });
+    setSaving(true);
+    try {
+      const result = await updateCustomerProfile(user.email, {
+        name: profileData.name.trim(),
+        phone: profileData.phone.trim(),
+        address: profileData.address.trim(),
+      });
 
-    if (result.success) {
-      setSuccess('Profile updated successfully.');
-      setTimeout(() => setSuccess(''), 3000);
-    } else {
-      setError(result.message);
+      if (result.success) {
+        setSuccess('Profile updated successfully.');
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.message);
+      }
+    } finally {
+      setSaving(false);
     }
-  };
+  }, [profileData, user, updateCustomerProfile]);
 
-  const handlePasswordSubmit = (e) => {
+  const handlePasswordSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -91,20 +97,25 @@ export default function ProfilePage() {
       return;
     }
 
-    const result = updateCustomerPassword(
-      user.email,
-      passwordData.currentPassword,
-      passwordData.newPassword
-    );
+    setSaving(true);
+    try {
+      const result = await updateCustomerPassword(
+        user.email,
+        passwordData.currentPassword,
+        passwordData.newPassword
+      );
 
-    if (result.success) {
-      setSuccess('Password updated successfully.');
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setTimeout(() => setSuccess(''), 3000);
-    } else {
-      setError(result.message);
+      if (result.success) {
+        setSuccess('Password updated successfully.');
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.message);
+      }
+    } finally {
+      setSaving(false);
     }
-  };
+  }, [passwordData, user, updateCustomerPassword]);
 
   if (!user) {
     return (
@@ -262,9 +273,11 @@ export default function ProfilePage() {
                     
                     <button
                       type="submit"
-                      className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 active:scale-[0.98] transition mt-2 shadow-md shadow-green-100"
+                      disabled={saving}
+                      className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 active:scale-[0.98] transition mt-2 shadow-md shadow-green-100 disabled:opacity-60 flex items-center justify-center gap-2"
                     >
-                      Save Profile Changes
+                      {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                      {saving ? 'Saving...' : 'Save Profile Changes'}
                     </button>
                   </form>
                 ) : (
@@ -314,9 +327,11 @@ export default function ProfilePage() {
 
                     <button
                       type="submit"
-                      className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 active:scale-[0.98] transition mt-2 shadow-md shadow-green-100"
+                      disabled={saving}
+                      className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 active:scale-[0.98] transition mt-2 shadow-md shadow-green-100 disabled:opacity-60 flex items-center justify-center gap-2"
                     >
-                      Update Account Password
+                      {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                      {saving ? 'Updating...' : 'Update Account Password'}
                     </button>
                   </form>
                 )}

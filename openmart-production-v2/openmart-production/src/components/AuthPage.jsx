@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { ShoppingBag, Lock, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
@@ -59,8 +59,7 @@ export default function AuthPage() {
   };
 
   if (isAuthenticated) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   return (

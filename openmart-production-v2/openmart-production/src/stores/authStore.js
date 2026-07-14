@@ -22,6 +22,31 @@ const getStaffCredentials = () => {
   }
 };
 
+/**
+ * Fetch the extended profile row from the `profiles` table for a given user ID.
+ * Returns { phone, address } on success, or empty strings on failure.
+ */
+const fetchUserProfile = async (userId) => {
+  if (!supabase || !userId) return { phone: '', address: '' };
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('name, phone, address, role')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) return { phone: '', address: '' };
+    return {
+      name: data.name || '',
+      phone: data.phone || '',
+      address: data.address || '',
+      role: data.role || 'customer',
+    };
+  } catch {
+    return { phone: '', address: '' };
+  }
+};
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -33,6 +58,10 @@ export const useAuthStore = create(
         pinCode: DEFAULT_STAFF_CREDENTIALS.pinCode,
       },
 
+      /**
+       * Sign in an existing customer via Supabase Auth.
+       * Also fetches their extended profile (phone, address) from the profiles table.
+       */
       loginCustomer: async (email, password) => {
         if (!isSupabaseConfigured) {
           return { success: false, message: 'Supabase database is not configured.' };
@@ -41,7 +70,7 @@ export const useAuthStore = create(
         try {
           const { data, error } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
-            password
+            password,
           });
           if (error) throw error;
 
@@ -49,14 +78,17 @@ export const useAuthStore = create(
             throw new Error('User data is missing.');
           }
 
+          // Fetch extended profile data (phone, address) from profiles table
+          const profile = await fetchUserProfile(data.user.id);
+
           set({
             user: {
               id: data.user.id,
-              name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Customer',
+              name: profile.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Customer',
               email: data.user.email,
-              role: 'customer',
-              phone: data.user.phone || '',
-              address: data.user.user_metadata?.address || '',
+              role: profile.role || data.user.user_metadata?.role || 'customer',
+              phone: profile.phone || data.user.phone || '',
+              address: profile.address || data.user.user_metadata?.address || '',
             },
             isAuthenticated: true,
           });
@@ -68,6 +100,10 @@ export const useAuthStore = create(
         }
       },
 
+      /**
+       * Register a new customer via Supabase Auth.
+       * Also upserts a row into the `profiles` table with their name.
+       */
       signUpCustomer: async (name, email, password) => {
         const trimmedName = name.trim();
         const normalizedEmail = email.trim().toLowerCase();
@@ -88,29 +124,46 @@ export const useAuthStore = create(
               data: {
                 name: trimmedName,
                 role: 'customer',
-              }
-            }
+              },
+            },
           });
           if (error) throw error;
 
           const user = data.user;
           if (user) {
-            set({
-              user: {
-                id: user.id,
-                name: trimmedName,
-                email: user.email,
-                role: 'customer',
-                phone: user.phone || '',
-                address: '',
-              },
-              isAuthenticated: true,
+            // Upsert profile row in the profiles table
+            // (The DB trigger handles this automatically on signup,
+            //  but we do it here as well to ensure it runs immediately)
+            await supabase.from('profiles').upsert({
+              id: user.id,
+              name: trimmedName,
+              role: 'customer',
+              phone: '',
+              address: '',
+              updated_at: new Date().toISOString(),
             });
+
+            // Only update local state if session exists (email not required for confirmation)
+            if (data.session) {
+              set({
+                user: {
+                  id: user.id,
+                  name: trimmedName,
+                  email: user.email,
+                  role: 'customer',
+                  phone: '',
+                  address: '',
+                },
+                isAuthenticated: true,
+              });
+            }
           }
 
-          return { 
-            success: true, 
-            message: data.session ? 'Signed up and logged in successfully.' : 'Sign up successful! Please check your email for confirmation.' 
+          return {
+            success: true,
+            message: data.session
+              ? 'Account created and signed in successfully.'
+              : 'Sign up successful! Please check your email to confirm your account before logging in.',
           };
         } catch (err) {
           console.error('Supabase sign-up error:', err);
@@ -153,60 +206,102 @@ export const useAuthStore = create(
         return { success: true, message: 'Staff credentials updated successfully.' };
       },
 
-      updateCustomerProfile: (email, updatedFields) => {
-        const normalizedEmail = email.trim().toLowerCase();
-        const updatedCustomers = get().customers.map((c) =>
-          c.email.toLowerCase() === normalizedEmail
-            ? { ...c, ...updatedFields }
-            : c
-        );
+      /**
+       * Update the current customer's profile (name, phone, address).
+       * Persists changes to BOTH the Supabase `profiles` table AND user_metadata,
+       * so data is reliably available after page refreshes and re-logins.
+       */
+      updateCustomerProfile: async (email, updatedFields) => {
+        if (!isSupabaseConfigured || !supabase) {
+          return { success: false, message: 'Database not configured.' };
+        }
 
-        const currentCustomer = updatedCustomers.find((c) => c.email.toLowerCase() === normalizedEmail);
+        const currentUser = get().user;
+        if (!currentUser) {
+          return { success: false, message: 'No user is logged in.' };
+        }
 
-        if (get().user && get().user.email.toLowerCase() === normalizedEmail) {
-          set({
-            customers: updatedCustomers,
-            user: {
-              ...get().user,
-              name: currentCustomer.name,
-              phone: currentCustomer.phone || '',
-              address: currentCustomer.address || '',
+        try {
+          // Update user_metadata in Supabase Auth (for name)
+          const { error: authError } = await supabase.auth.updateUser({
+            data: {
+              name: updatedFields.name,
+              address: updatedFields.address || '',
             },
           });
-        } else {
-          set({ customers: updatedCustomers });
-        }
 
-        return { success: true, message: 'Profile updated successfully.' };
+          if (authError) throw authError;
+
+          // Upsert extended profile data (phone, address) into the profiles table
+          const { error: profileError } = await supabase.from('profiles').upsert({
+            id: currentUser.id,
+            name: updatedFields.name,
+            phone: updatedFields.phone || '',
+            address: updatedFields.address || '',
+            updated_at: new Date().toISOString(),
+          });
+
+          if (profileError) throw profileError;
+
+          // Update local Zustand state
+          set({
+            user: {
+              ...currentUser,
+              name: updatedFields.name,
+              phone: updatedFields.phone || '',
+              address: updatedFields.address || '',
+            },
+          });
+
+          return { success: true, message: 'Profile updated successfully.' };
+        } catch (err) {
+          console.error('Profile update error:', err);
+          return { success: false, message: err.message || 'Failed to update profile.' };
+        }
       },
 
-      updateCustomerPassword: (email, currentPassword, newPassword) => {
-        const normalizedEmail = email.trim().toLowerCase();
-        const customerIdx = get().customers.findIndex(
-          (c) => c.email.toLowerCase() === normalizedEmail
-        );
-
-        if (customerIdx === -1) {
-          return { success: false, message: 'Customer account not found.' };
+      /**
+       * Change the current customer's password via Supabase Auth.
+       * First re-authenticates with the current password to verify identity,
+       * then updates to the new password.
+       */
+      updateCustomerPassword: async (email, currentPassword, newPassword) => {
+        if (!isSupabaseConfigured || !supabase) {
+          return { success: false, message: 'Database not configured.' };
         }
 
-        const customer = get().customers[customerIdx];
-        if (customer.password !== currentPassword) {
-          return { success: false, message: 'Incorrect current password.' };
+        const currentUser = get().user;
+        if (!currentUser) {
+          return { success: false, message: 'No user is logged in.' };
         }
 
-        const updatedCustomers = [...get().customers];
-        updatedCustomers[customerIdx] = {
-          ...customer,
-          password: newPassword,
-        };
+        try {
+          // Step 1: Re-authenticate with current password to verify identity
+          const { error: reAuthError } = await supabase.auth.signInWithPassword({
+            email: currentUser.email,
+            password: currentPassword,
+          });
 
-        set({ customers: updatedCustomers });
-        return { success: true, message: 'Password updated successfully.' };
+          if (reAuthError) {
+            return { success: false, message: 'Incorrect current password. Please try again.' };
+          }
+
+          // Step 2: Update to new password
+          const { error: updateError } = await supabase.auth.updateUser({
+            password: newPassword,
+          });
+
+          if (updateError) throw updateError;
+
+          return { success: true, message: 'Password updated successfully.' };
+        } catch (err) {
+          console.error('Password update error:', err);
+          return { success: false, message: err.message || 'Failed to update password.' };
+        }
       },
 
       logout: async () => {
-        if (isSupabaseConfigured) {
+        if (isSupabaseConfigured && supabase) {
           try {
             await supabase.auth.signOut();
           } catch (err) {

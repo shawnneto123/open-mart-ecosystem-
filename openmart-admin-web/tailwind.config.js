@@ -11,7 +11,7 @@ export default {
         secondary: '#0284c7', // Sky Blue
       },
       fontFamily: {
-        sans: ['system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
     },
   },

@@ -44,20 +44,28 @@ export interface CustomerInfo {
 
 export interface Order {
   id: string;
+  user_id?: string | null;
   items: OrderItem[];
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'Paid';
   paymentStatus: 'unpaid' | 'paid' | 'failed';
+  // camelCase aliases (used in local state & UI)
   createdAt: string;
   updatedAt: string;
-  subtotal: number;
-  tax: number;
   shippingCost: number;
-  total: number;
   paymentMethod: string | null;
   customerInfo: CustomerInfo;
+  // raw snake_case (may exist when reading from DB)
+  created_at?: string;
+  updated_at?: string;
+  payment_status?: string;
+  shipping_cost?: number;
+  payment_method?: string;
+  customer_info?: CustomerInfo;
+  subtotal: number;
+  tax: number;
+  total: number;
   notes: string;
   reference?: string;
-  payment_method?: string;
 }
 
 // ----------------------------------------------------
@@ -211,7 +219,7 @@ export async function updateOrderStatus(orderId: string, status: Order['status']
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('orders')
-    .update({ status, updatedAt: now })
+    .update({ status, updated_at: now })
     .eq('id', orderId)
     .select();
 
@@ -227,7 +235,7 @@ export async function updatePaymentStatus(orderId: string, paymentStatus: Order[
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('orders')
-    .update({ paymentStatus, updatedAt: now })
+    .update({ payment_status: paymentStatus, updated_at: now })
     .eq('id', orderId)
     .select();
 

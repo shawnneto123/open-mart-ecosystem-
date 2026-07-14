@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import useCartStore from '../stores/cartStore';
 
 export default function Cart() {
-  const { items, removeFromCart, updateQuantity, getTotalPrice, clearCart } = useCartStore();
+  const { items, removeFromCart, updateQuantity, clearCart } = useCartStore();
+  const totalPrice = useCartStore((state) => state.items.reduce((sum, item) => sum + item.price * item.quantity, 0));
 
   if (items.length === 0) {
     return (
@@ -25,7 +26,7 @@ export default function Cart() {
     );
   }
 
-  const totalPrice = getTotalPrice();
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -110,16 +111,17 @@ export default function Cart() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Shipping</span>
-                  <span>₦500.00</span>
+                  <span className="text-xs text-amber-600 font-medium">Calculated at checkout</span>
                 </div>
               </div>
 
               <div className="flex justify-between mb-6">
-                <span className="font-semibold text-gray-900">Total</span>
+                <span className="font-semibold text-gray-900">Estimated Total</span>
                 <span className="text-2xl font-bold text-green-600">
-                  ₦{(totalPrice * 1.075 + 500).toLocaleString()}
+                  ₦{(totalPrice * 1.075).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
+              <p className="text-xs text-gray-400 mb-4 -mt-4">Excludes delivery fee — confirmed at checkout.</p>
 
               <Link
                 to="/checkout"

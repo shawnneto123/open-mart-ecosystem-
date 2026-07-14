@@ -29,7 +29,12 @@ export default function OrderHistory() {
   const userOrders = useMemo(() => {
     if (!user) return [];
     if (user.role === 'staff') return orders;
-    return orders.filter((order) => order.customerInfo?.email === user.email);
+    // Match by email OR by userId so guest orders placed before login are visible
+    return orders.filter(
+      (order) =>
+        order.customerInfo?.email === user.email ||
+        (order.userId && order.userId === user.id)
+    );
   }, [orders, user]);
 
   const stats = useMemo(() => {

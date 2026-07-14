@@ -37,6 +37,7 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     sourcemap: false,
+    chunkSizeWarningLimit: 700,
   },
   esbuild: {
     drop: ['console', 'debugger'],

@@ -11,6 +11,8 @@ interface OrderMonitorProps {
   orders: Order[];
   onOrderUpdated: () => void;
   isLoading: boolean;
+  soundEnabled: boolean;
+  onSoundToggle: (enabled: boolean) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -18,7 +20,6 @@ const statusColors: Record<string, string> = {
   confirmed: 'bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-400/20',
   completed: 'bg-green-50 text-green-700 border-green-200 ring-1 ring-green-400/20',
   cancelled: 'bg-red-50 text-red-700 border-red-200 ring-1 ring-red-400/20',
-  Paid: 'bg-emerald-100 text-emerald-800 border-emerald-200 ring-1 ring-emerald-400/20',
 };
 
 const paymentStatusColors = {
@@ -27,11 +28,10 @@ const paymentStatusColors = {
   failed: 'bg-red-50 text-red-700 border-red-200 ring-1 ring-red-300',
 };
 
-export default function OrderMonitor({ orders, onOrderUpdated, isLoading }: OrderMonitorProps) {
+export default function OrderMonitor({ orders, onOrderUpdated, isLoading, soundEnabled, onSoundToggle }: OrderMonitorProps) {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [newOrderAlert, setNewOrderAlert] = useState<boolean>(false);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // Auto-select first order whenever the list changes
@@ -228,7 +228,7 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading }: Orde
           <div className="flex items-center gap-2">
             {/* Sound toggle */}
             <button 
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => onSoundToggle(!soundEnabled)}
               className="p-1 text-slate-400 hover:text-slate-600 rounded"
               title={soundEnabled ? 'Mute Alerts' : 'Enable Audio Alerts'}
             >
@@ -299,7 +299,7 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading }: Orde
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border capitalize ${paymentStatusColors[order.paymentStatus] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                       {order.paymentStatus}
                     </span>
-                    {((order.paymentMethod || (order as any).payment_method) === 'Paystack') && (order.status === 'Paid' || (order as any).status === 'Paid') && (
+                    {((order.paymentMethod || (order as any).payment_method) === 'Paystack') && (order.paymentStatus === 'paid') && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-500 text-white border border-teal-600 ring-1 ring-teal-400/10">
                         Paid via Paystack {order.reference || (order as any).reference ? `(${order.reference || (order as any).reference})` : ''}
                       </span>
@@ -332,7 +332,7 @@ export default function OrderMonitor({ orders, onOrderUpdated, isLoading }: Orde
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${paymentStatusColors[currentOrder.paymentStatus] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                     {currentOrder.paymentStatus}
                   </span>
-                  {((currentOrder.paymentMethod || (currentOrder as any).payment_method) === 'Paystack') && (currentOrder.status === 'Paid' || (currentOrder as any).status === 'Paid') && (
+                  {((currentOrder.paymentMethod || (currentOrder as any).payment_method) === 'Paystack') && (currentOrder.paymentStatus === 'paid') && (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-500 text-white border border-teal-600 ring-1 ring-teal-400/10">
                       Paid via Paystack {currentOrder.reference || (currentOrder as any).reference ? `(${currentOrder.reference || (currentOrder as any).reference})` : ''}
                     </span>

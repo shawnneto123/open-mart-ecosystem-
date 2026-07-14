@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { 
   supabase,
@@ -11,6 +11,7 @@ import {
   Product, 
   Order 
 } from './services/supabase';
+import type { User } from '@supabase/supabase-js';
 import { formatNaira } from './utils/helpers';
 import InventoryManager from './components/InventoryManager';
 import OrderMonitor from './components/OrderMonitor';
@@ -30,9 +31,10 @@ export default function App() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Authentication State
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const navigate = useNavigate();
 
@@ -90,18 +92,18 @@ export default function App() {
     }
   };
 
-  const refreshAll = () => {
+  const refreshAll = useCallback(() => {
     if (!user) return;
     loadProducts();
     loadOrders();
-  };
+  }, [user]);
 
   // Reload products/orders whenever the user changes/logs in
   useEffect(() => {
     if (user) {
       refreshAll();
     }
-  }, [user]);
+  }, [user, refreshAll]);
 
   // Real-time Supabase subscription for live orders
   useEffect(() => {
@@ -116,8 +118,8 @@ export default function App() {
           console.log('Realtime change detected in orders table:', payload);
           loadOrders();
 
-          // Play a chime only for brand-new orders
-          if (payload.eventType === 'INSERT') {
+          // Play a chime only for brand-new orders (if sound is enabled)
+          if (payload.eventType === 'INSERT' && soundEnabled) {
             try {
               const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
               const osc1 = audioCtx.createOscillator();
@@ -149,7 +151,7 @@ export default function App() {
     return () => {
       supabase?.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, soundEnabled]);
 
   // Modal Actions
   const handleOpenAddModal = () => {
@@ -390,6 +392,8 @@ export default function App() {
                         orders={orders}
                         onOrderUpdated={loadOrders}
                         isLoading={isLoadingOrders}
+                        soundEnabled={soundEnabled}
+                        onSoundToggle={setSoundEnabled}
                       />
                     </ErrorBoundary>
                   )}

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
+import useAuthStore from './authStore';
 
 const useOrderStore = create(
   persist(
@@ -16,10 +17,20 @@ const useOrderStore = create(
           const { data, error } = await supabase
             .from('orders')
             .select('*')
-            .order('createdAt', { ascending: false });
+            .order('created_at', { ascending: false });
           if (error) throw error;
           if (data) {
-            set({ orders: data });
+            // Map snake_case DB columns to camelCase for the app
+            const mapped = data.map((o) => ({
+              ...o,
+              createdAt: o.created_at ?? o.createdAt,
+              updatedAt: o.updated_at ?? o.updatedAt,
+              paymentStatus: o.payment_status ?? o.paymentStatus,
+              shippingCost: o.shipping_cost ?? o.shippingCost,
+              paymentMethod: o.payment_method ?? o.paymentMethod,
+              customerInfo: o.customer_info ?? o.customerInfo,
+            }));
+            set({ orders: mapped });
           }
         } catch (err) {
           console.error('Supabase fetch orders error:', err);
@@ -27,25 +38,41 @@ const useOrderStore = create(
       },
 
       createOrder: async (orderData) => {
+        // Get the current authenticated user's ID
+        const currentUser = useAuthStore.getState().user;
+
         const order = {
           id: `ORD_${Date.now()}`,
+          user_id: currentUser?.id || null,
           items: orderData.items || [],
-          status: 'pending', // pending, confirmed, completed, cancelled
-          paymentStatus: 'unpaid', // unpaid, paid, failed
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          status: 'pending',
+          payment_status: orderData.paymentStatus || 'unpaid',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
           subtotal: orderData.subtotal || 0,
           tax: orderData.tax || 0,
-          shippingCost: orderData.shippingCost || 0,
+          shipping_cost: orderData.shippingCost || 0,
           total: orderData.total || 0,
-          paymentMethod: orderData.paymentMethod || null,
-          customerInfo: orderData.customerInfo || {},
+          payment_method: orderData.paymentMethod || null,
+          customer_info: orderData.customerInfo || {},
           notes: orderData.notes || '',
+          reference: orderData.reference || null,
+        };
+
+        // Also keep camelCase aliases in local state for component compatibility
+        const orderLocal = {
+          ...order,
+          createdAt: order.created_at,
+          updatedAt: order.updated_at,
+          paymentStatus: order.payment_status,
+          shippingCost: order.shipping_cost,
+          paymentMethod: order.payment_method,
+          customerInfo: order.customer_info,
         };
 
         set((state) => ({
-          orders: [order, ...state.orders],
-          currentOrder: order,
+          orders: [orderLocal, ...state.orders],
+          currentOrder: orderLocal,
         }));
 
         if (isSupabaseConfigured) {
@@ -57,18 +84,14 @@ const useOrderStore = create(
           }
         }
 
-        return order;
+        return orderLocal;
       },
 
       updateOrderStatus: async (orderId, status) => {
         set((state) => ({
           orders: state.orders.map((order) =>
             order.id === orderId
-              ? {
-                  ...order,
-                  status,
-                  updatedAt: new Date().toISOString(),
-                }
+              ? { ...order, status, updatedAt: new Date().toISOString() }
               : order
           ),
         }));
@@ -77,7 +100,7 @@ const useOrderStore = create(
           try {
             await supabase
               .from('orders')
-              .update({ status, updatedAt: new Date().toISOString() })
+              .update({ status, updated_at: new Date().toISOString() })
               .eq('id', orderId);
           } catch (err) {
             console.error('Supabase update order status error:', err);
@@ -89,11 +112,7 @@ const useOrderStore = create(
         set((state) => ({
           orders: state.orders.map((order) =>
             order.id === orderId
-              ? {
-                  ...order,
-                  paymentStatus,
-                  updatedAt: new Date().toISOString(),
-                }
+              ? { ...order, paymentStatus, updatedAt: new Date().toISOString() }
               : order
           ),
         }));
@@ -102,7 +121,7 @@ const useOrderStore = create(
           try {
             await supabase
               .from('orders')
-              .update({ paymentStatus, updatedAt: new Date().toISOString() })
+              .update({ payment_status: paymentStatus, updated_at: new Date().toISOString() })
               .eq('id', orderId);
           } catch (err) {
             console.error('Supabase update payment status error:', err);

@@ -7,7 +7,7 @@ import { useAuthStore } from '../stores/authStore'
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
-  const cartItems = useCartStore((state) => state.getItemCount())
+  const cartItems = useCartStore((state) => state.items.length)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)

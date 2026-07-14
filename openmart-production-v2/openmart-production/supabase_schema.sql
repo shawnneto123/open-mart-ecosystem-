@@ -1,10 +1,13 @@
--- SQL Schema for OpenMart Products Table
--- Designed for PostgreSQL / Supabase
+-- ============================================================
+-- OpenMart Supabase Database Schema
+-- PostgreSQL / Supabase Compatible
+-- ============================================================
 
--- Drop table if exists
--- DROP TABLE IF EXISTS products;
 
-CREATE TABLE products (
+-- ============================================================
+-- TABLE: products
+-- ============================================================
+CREATE TABLE IF NOT EXISTS products (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(255),
@@ -16,30 +19,131 @@ CREATE TABLE products (
     "lastUpdated" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes for performance optimization
-CREATE INDEX idx_products_name ON products(name);
-CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 
--- Enable Row Level Security (RLS) if desired in Supabase
+-- RLS for products
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access to all users (for customer browsing)
 CREATE POLICY "Allow public read access" ON public.products
     FOR SELECT USING (true);
 
--- Allow authenticated staff to insert products
 CREATE POLICY "Allow authenticated staff insert products" ON public.products
     FOR INSERT TO authenticated WITH CHECK (true);
 
--- Allow authenticated staff to update products
 CREATE POLICY "Allow authenticated staff update products" ON public.products
     FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
--- Optional: allow staff to delete products as well
 CREATE POLICY "Allow authenticated staff delete products" ON public.products
     FOR DELETE TO authenticated USING (true);
 
--- Storage bucket policy for uploaded product images
+
+-- ============================================================
+-- TABLE: profiles
+-- Stores extended customer info that Supabase Auth doesn't
+-- natively support (phone, address). Linked to auth.users.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT,
+    phone TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    role TEXT DEFAULT 'customer',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_profiles_id ON profiles(id);
+
+-- RLS for profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Users can read & write their own profile only
+CREATE POLICY "Users can view own profile" ON public.profiles
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- Auto-create profile on new user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, name, role)
+  VALUES (
+    NEW.id,
+    NEW.raw_user_meta_data->>'name',
+    COALESCE(NEW.raw_user_meta_data->>'role', 'customer')
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop trigger first to allow re-running this script
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ============================================================
+-- TABLE: orders
+-- Stores all customer orders. Linked to auth.users via user_id.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS orders (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    items JSONB NOT NULL DEFAULT '[]',
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    payment_status VARCHAR(50) NOT NULL DEFAULT 'unpaid',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    tax NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    shipping_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    payment_method VARCHAR(100),
+    customer_info JSONB DEFAULT '{}',
+    notes TEXT DEFAULT '',
+    reference VARCHAR(255)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+
+-- RLS for orders
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+-- Customers can view only their own orders
+CREATE POLICY "Customers can view own orders" ON public.orders
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Customers can insert their own orders
+CREATE POLICY "Customers can insert own orders" ON public.orders
+    FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+
+-- Customers can update their own orders (e.g. cancel)
+CREATE POLICY "Customers can update own orders" ON public.orders
+    FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Authenticated staff can read ALL orders (for admin panel)
+CREATE POLICY "Staff can read all orders" ON public.orders
+    FOR SELECT TO authenticated USING (true);
+
+-- Authenticated staff can update ANY order status
+CREATE POLICY "Staff can update any order" ON public.orders
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+-- ============================================================
+-- Storage bucket policies for product images
+-- ============================================================
 CREATE POLICY "Allow public product image reads" ON storage.objects
     FOR SELECT USING (bucket_id = 'product-images');
 

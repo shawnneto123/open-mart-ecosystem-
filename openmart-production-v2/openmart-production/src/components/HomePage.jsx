@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Search, ChevronRight, Zap, Truck, Shield, Clock } from 'lucide-react'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { useCartStore } from '../stores/cartStore'
-import { getCategory, getCategoryEmoji, getCategoryColor, getAllCategories } from '../utils/categoryHelper'
+import { getCategoryEmoji, getAllCategories } from '../utils/categoryHelper'
 import { getProductImageUrl, getFallbackImageUrl } from '../utils/imageHelper'
 import { motion } from 'framer-motion'
 
@@ -233,14 +233,14 @@ export default function HomePage() {
                     {cartItem ? (
                       <div className="flex items-center justify-between border border-green-600 rounded-lg overflow-hidden bg-white w-full h-10">
                         <button
-                          onClick={() => updateQuantity(item.id, cartItem.quantity - 1)}
+                          onClick={() => updateQuantity(cartItem.itemId, cartItem.quantity - 1)}
                           className="px-4 h-full bg-green-50 text-green-700 hover:bg-green-100 transition font-bold"
                         >
                           -
                         </button>
                         <span className="font-semibold text-gray-900 text-sm">{cartItem.quantity} in cart</span>
                         <button
-                          onClick={() => updateQuantity(item.id, cartItem.quantity + 1)}
+                          onClick={() => updateQuantity(cartItem.itemId, cartItem.quantity + 1)}
                           className="px-4 h-full bg-green-50 text-green-700 hover:bg-green-100 transition font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                           disabled={item.quantity !== undefined && cartItem.quantity >= item.quantity}
                         >
