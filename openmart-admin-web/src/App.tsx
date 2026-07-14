@@ -180,6 +180,16 @@ export default function App() {
       )
       .subscribe();
 
+    // Debug: log subscription object to help trace why realtime events may not arrive
+    try {
+      console.log('Orders realtime subscription created:', channel);
+      // If the channel exposes a 'state' or similar, log it
+      // @ts-ignore
+      if (channel && (channel as any).state) console.log('Channel state:', (channel as any).state);
+    } catch (e) {
+      console.warn('Could not inspect realtime channel:', e);
+    }
+
     return () => {
       supabase?.removeChannel(channel);
     };
