@@ -181,6 +181,22 @@ export default function App() {
       )
       .subscribe((status) => {
         console.log('Orders channel subscribe status:', status);
+        try {
+          // when channel unexpectedly closes, attempt a gentle reconnect
+          if (String(status).toUpperCase().includes('CLOSED')) {
+            console.warn('Orders channel closed; attempting re-subscribe in 1s');
+            setTimeout(() => {
+              try {
+                // re-subscribe the channel (safe no-op if already subscribed)
+                channel.subscribe((s) => console.log('Re-subscribe callback status:', s));
+              } catch (e) {
+                console.error('Error while attempting channel re-subscribe:', e);
+              }
+            }, 1000);
+          }
+        } catch (e) {
+          console.warn('Error processing subscribe status:', e);
+        }
       });
 
     return () => {
