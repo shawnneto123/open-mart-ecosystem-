@@ -14,21 +14,29 @@ const useOrderStore = create(
       fetchOrders: async () => {
         if (!isSupabaseConfigured) return;
         try {
-          const { data, error } = await supabase
+          let result = await supabase
             .from('orders')
             .select('*')
-            .order('created_at', { ascending: false });
-          if (error) throw error;
-          if (data) {
-            // Map snake_case DB columns to camelCase for the UI
-            const mapped = data.map((o) => ({
+            .order('createdAt', { ascending: false });
+
+          if (result.error) {
+            result = await supabase
+              .from('orders')
+              .select('*')
+              .order('created_at', { ascending: false });
+          }
+
+          if (result.error) throw result.error;
+          if (result.data) {
+            // Normalize both camelCase and snake_case DB rows for the UI
+            const mapped = result.data.map((o) => ({
               ...o,
-              createdAt: o.created_at ?? o.createdAt,
-              updatedAt: o.updated_at ?? o.updatedAt,
-              paymentStatus: o.payment_status ?? o.paymentStatus,
-              shippingCost: o.shipping_cost ?? o.shippingCost,
-              paymentMethod: o.payment_method ?? o.paymentMethod,
-              customerInfo: o.customer_info ?? o.customerInfo,
+              createdAt: o.createdAt ?? o.created_at ?? o.createdAt,
+              updatedAt: o.updatedAt ?? o.updated_at ?? o.updatedAt,
+              paymentStatus: o.paymentStatus ?? o.payment_status ?? o.paymentStatus,
+              shippingCost: o.shippingCost ?? o.shipping_cost ?? o.shippingCost,
+              paymentMethod: o.paymentMethod ?? o.payment_method ?? o.paymentMethod,
+              customerInfo: o.customerInfo ?? o.customer_info ?? o.customerInfo,
             }));
             set({ orders: mapped });
           }
@@ -38,7 +46,6 @@ const useOrderStore = create(
       },
 
       createOrder: async (orderData) => {
-        // Get the current authenticated user's ID
         const currentUser = useAuthStore.getState().user;
         const now = new Date().toISOString();
 
@@ -68,28 +75,53 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
-            // DB schema uses snake_case columns — always write snake_case to Supabase
+            // Prefer the camelCase schema used by the admin dashboard.
             const dbRow = {
               id: orderLocal.id,
               user_id: orderLocal.user_id,
               items: orderLocal.items,
               status: orderLocal.status,
-              payment_status: orderLocal.paymentStatus,
-              created_at: now,
-              updated_at: now,
+              paymentStatus: orderLocal.paymentStatus,
+              createdAt: now,
+              updatedAt: now,
               subtotal: orderLocal.subtotal,
               tax: orderLocal.tax,
-              shipping_cost: orderLocal.shippingCost,
+              shippingCost: orderLocal.shippingCost,
               total: orderLocal.total,
-              payment_method: orderLocal.paymentMethod,
-              customer_info: orderLocal.customerInfo,
+              paymentMethod: orderLocal.paymentMethod,
+              customerInfo: orderLocal.customerInfo,
               notes: orderLocal.notes,
               reference: orderLocal.reference,
             };
 
             const { error } = await supabase.from('orders').insert([dbRow]);
             if (error) {
-              console.error('Supabase insert order error:', error);
+              console.warn('CamelCase order insert failed, retrying with snake_case payload:', error);
+
+              const fallbackDbRow = {
+                id: orderLocal.id,
+                user_id: orderLocal.user_id,
+                items: orderLocal.items,
+                status: orderLocal.status,
+                payment_status: orderLocal.paymentStatus,
+                created_at: now,
+                updated_at: now,
+                subtotal: orderLocal.subtotal,
+                tax: orderLocal.tax,
+                shipping_cost: orderLocal.shippingCost,
+                total: orderLocal.total,
+                payment_method: orderLocal.paymentMethod,
+                customer_info: orderLocal.customerInfo,
+                notes: orderLocal.notes,
+                reference: orderLocal.reference,
+              };
+
+              const { error: fallbackError } = await supabase.from('orders').insert([fallbackDbRow]);
+              if (fallbackError) {
+                console.error('Supabase insert order error:', fallbackError);
+              } else {
+                console.log('Order inserted to Supabase successfully with snake_case fallback:', orderLocal.id);
+              }
             } else {
               console.log('Order inserted to Supabase successfully:', orderLocal.id);
             }
@@ -112,11 +144,20 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
+            const now = new Date().toISOString();
             const { error } = await supabase
               .from('orders')
-              .update({ status, updated_at: new Date().toISOString() })
+              .update({ status, updatedAt: now })
               .eq('id', orderId);
-            if (error) throw error;
+
+            if (error) {
+              console.warn('CamelCase order status update failed, retrying with snake_case fallback:', error);
+              const { error: fallbackError } = await supabase
+                .from('orders')
+                .update({ status, updated_at: now })
+                .eq('id', orderId);
+              if (fallbackError) throw fallbackError;
+            }
           } catch (err) {
             console.error('Supabase update order status error:', err);
           }
@@ -134,11 +175,20 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
+            const now = new Date().toISOString();
             const { error } = await supabase
               .from('orders')
-              .update({ payment_status: paymentStatus, updated_at: new Date().toISOString() })
+              .update({ paymentStatus, updatedAt: now })
               .eq('id', orderId);
-            if (error) throw error;
+
+            if (error) {
+              console.warn('CamelCase payment status update failed, retrying with snake_case fallback:', error);
+              const { error: fallbackError } = await supabase
+                .from('orders')
+                .update({ payment_status: paymentStatus, updated_at: now })
+                .eq('id', orderId);
+              if (fallbackError) throw fallbackError;
+            }
           } catch (err) {
             console.error('Supabase update payment status error:', err);
           }

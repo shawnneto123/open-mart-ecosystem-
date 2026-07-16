@@ -6,9 +6,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const SUPABASE_URL = supabaseUrl;
 export const SUPABASE_ANON_KEY = supabaseAnonKey;
 
-export const isSupabaseConfigured = 
-  !!supabaseUrl && 
-  !!supabaseAnonKey && 
+export const isSupabaseConfigured =
+  !!supabaseUrl &&
+  !!supabaseAnonKey &&
   supabaseUrl !== 'https://your-project.supabase.co' &&
   supabaseUrl.startsWith('https://');
 
@@ -122,14 +122,14 @@ export async function addProduct(product: Omit<Product, 'id' | 'isLowStock' | 'd
 }
 
 export async function updateProduct(
-  id: string, 
+  id: string,
   updates: Partial<Omit<Product, 'id' | 'dateAdded' | 'lastUpdated'>>
 ): Promise<Product | null> {
   if (!supabase) return null;
-  
+
   const quantity = updates.quantity !== undefined ? Number(updates.quantity) : undefined;
   const price = updates.price !== undefined ? Number(updates.price) : undefined;
-  
+
   const finalUpdates: any = {
     ...updates,
     lastUpdated: new Date().toISOString()
@@ -176,20 +176,20 @@ export async function deleteProduct(id: string): Promise<void> {
 // Normalizes a raw Supabase row (snake_case or camelCase) into our Order interface
 function normalizeOrder(raw: any): Order {
   return {
-    id:            raw.id            ?? '',
-    items:         raw.items         ?? [],
-    status:        raw.status        ?? 'pending',
-    paymentStatus: raw.paymentStatus ?? raw.payment_status  ?? 'unpaid',
-    createdAt:     raw.createdAt     ?? raw.created_at      ?? new Date().toISOString(),
-    updatedAt:     raw.updatedAt     ?? raw.updated_at      ?? new Date().toISOString(),
-    subtotal:      raw.subtotal      ?? raw.sub_total       ?? 0,
-    tax:           raw.tax           ?? 0,
-    shippingCost:  raw.shippingCost  ?? raw.shipping_cost   ?? 0,
-    total:         raw.total         ?? 0,
-    paymentMethod: raw.paymentMethod ?? raw.payment_method  ?? null,
-    customerInfo:  raw.customerInfo  ?? raw.customer_info   ?? {},
-    notes:         raw.notes         ?? '',
-    reference:     raw.reference     ?? undefined,
+    id: raw.id ?? '',
+    items: raw.items ?? [],
+    status: raw.status ?? 'pending',
+    paymentStatus: raw.paymentStatus ?? raw.payment_status ?? 'unpaid',
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    updatedAt: raw.updatedAt ?? raw.updated_at ?? new Date().toISOString(),
+    subtotal: raw.subtotal ?? raw.sub_total ?? 0,
+    tax: raw.tax ?? 0,
+    shippingCost: raw.shippingCost ?? raw.shipping_cost ?? 0,
+    total: raw.total ?? 0,
+    paymentMethod: raw.paymentMethod ?? raw.payment_method ?? null,
+    customerInfo: raw.customerInfo ?? raw.customer_info ?? {},
+    notes: raw.notes ?? '',
+    reference: raw.reference ?? undefined,
   };
 }
 
@@ -199,20 +199,20 @@ export async function fetchOrders(): Promise<Order[]> {
     return [];
   }
 
-  // DB schema uses snake_case — order by created_at directly
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false });
+  // Prefer the camelCase order schema for the admin dashboard, then fall back to the older snake_case schema.
+  let result = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
 
-  if (error) {
-    console.error('Error fetching orders:', error);
-    throw error;
+  if (result.error) {
+    result = await supabase.from('orders').select('*').order('created_at', { ascending: false });
   }
 
-  return (data || []).map(normalizeOrder);
-}
+  if (result.error) {
+    console.error('Error fetching orders:', result.error);
+    throw result.error;
+  }
 
+  return (result.data || []).map(normalizeOrder);
+}
 
 
 
@@ -220,31 +220,16 @@ export async function updateOrderStatus(orderId: string, status: Order['status']
   if (!supabase) return null;
   const now = new Date().toISOString();
 
-  // Try updating with snake_case timestamp first (common Postgres style)
   let result = await supabase
     .from('orders')
-    .update({ status, updated_at: now })
+    .update({ status, updatedAt: now })
     .eq('id', orderId)
     .select();
 
-  // If the schema doesn't have `updated_at`, fall back to camelCase or omit timestamp
-  if (result.error) {
-    const msg = String(result.error.message || result.error);
-    if (/could not find the 'updated_at' column/i.test(msg) || /column "updated_at" does not exist/i.test(msg)) {
-      // Try camelCase
-      result = await supabase
-        .from('orders')
-        .update({ status, updatedAt: now })
-        .eq('id', orderId)
-        .select();
-    }
-  }
-
-  // Last resort: try without any timestamp field
   if (result.error) {
     result = await supabase
       .from('orders')
-      .update({ status })
+      .update({ status, updated_at: now })
       .eq('id', orderId)
       .select();
   }
@@ -261,30 +246,16 @@ export async function updatePaymentStatus(orderId: string, paymentStatus: Order[
   if (!supabase) return null;
   const now = new Date().toISOString();
 
-  // Try snake_case first
   let result = await supabase
     .from('orders')
-    .update({ payment_status: paymentStatus, updated_at: now })
+    .update({ paymentStatus, updatedAt: now })
     .eq('id', orderId)
     .select();
 
   if (result.error) {
-    const msg = String(result.error.message || result.error);
-    if (/could not find the 'updated_at' column/i.test(msg) || /column "updated_at" does not exist/i.test(msg)) {
-      // Try camelCase
-      result = await supabase
-        .from('orders')
-        .update({ paymentStatus: paymentStatus, updatedAt: now })
-        .eq('id', orderId)
-        .select();
-    }
-  }
-
-  // Fallback without timestamp
-  if (result.error) {
     result = await supabase
       .from('orders')
-      .update({ payment_status: paymentStatus })
+      .update({ payment_status: paymentStatus, updated_at: now })
       .eq('id', orderId)
       .select();
   }
