@@ -30,19 +30,7 @@ export default function Login() {
       if (authError) throw authError;
 
       if (data?.user) {
-        const userEmail = data.user.email || '';
-        
-        // Strict safety check: verify user email includes 'staff'
-        const isStaff = userEmail.toLowerCase().includes('staff');
-        
-        if (!isStaff) {
-          // Sign out immediately if they do not have staff email
-          await supabase.auth.signOut();
-          setError('Access Denied: You do not have staff permissions (staff email required).');
-        } else {
-          // Success: Navigate to dashboard
-          navigate('/', { replace: true });
-        }
+        navigate('/', { replace: true });
       }
     } catch (err: any) {
       console.error('Login error:', err);

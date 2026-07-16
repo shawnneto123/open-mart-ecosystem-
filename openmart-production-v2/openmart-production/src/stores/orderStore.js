@@ -14,6 +14,9 @@ const useOrderStore = create(
       fetchOrders: async () => {
         if (!isSupabaseConfigured) return;
         try {
+          if (supabase.auth) {
+            await supabase.auth.getSession();
+          }
           let result = await supabase
             .from('orders')
             .select('*')
@@ -31,6 +34,8 @@ const useOrderStore = create(
             // Normalize both camelCase and snake_case DB rows for the UI
             const mapped = result.data.map((o) => ({
               ...o,
+              userId: o.userId ?? o.user_id ?? null,
+              user_id: o.user_id ?? o.userId ?? null,
               createdAt: o.createdAt ?? o.created_at ?? o.createdAt,
               updatedAt: o.updatedAt ?? o.updated_at ?? o.updatedAt,
               paymentStatus: o.paymentStatus ?? o.payment_status ?? o.paymentStatus,
@@ -52,6 +57,7 @@ const useOrderStore = create(
         // Local state object uses camelCase (for UI display)
         const orderLocal = {
           id: `ORD_${Date.now()}`,
+          userId: currentUser?.id || null,
           user_id: currentUser?.id || null,
           items: orderData.items || [],
           status: 'pending',
@@ -75,6 +81,9 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
+            if (supabase.auth) {
+              await supabase.auth.getSession();
+            }
             // Prefer the camelCase schema used by the admin dashboard.
             const dbRow = {
               id: orderLocal.id,
@@ -144,6 +153,9 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
+            if (supabase.auth) {
+              await supabase.auth.getSession();
+            }
             const now = new Date().toISOString();
             const { error } = await supabase
               .from('orders')
@@ -175,6 +187,9 @@ const useOrderStore = create(
 
         if (isSupabaseConfigured) {
           try {
+            if (supabase.auth) {
+              await supabase.auth.getSession();
+            }
             const now = new Date().toISOString();
             const { error } = await supabase
               .from('orders')

@@ -30,11 +30,11 @@ export default function OrderHistory() {
     if (!user) return [];
     if (user.role === 'staff') return orders;
     // Match by email OR by userId so guest orders placed before login are visible
-    return orders.filter(
-      (order) =>
-        order.customerInfo?.email === user.email ||
-        (order.userId && order.userId === user.id)
-    );
+    return orders.filter((order) => {
+      const orderUserId = order.userId ?? order.user_id ?? null;
+      const orderEmail = order.customerInfo?.email || '';
+      return orderEmail === user.email || (orderUserId && orderUserId === user.id);
+    });
   }, [orders, user]);
 
   const stats = useMemo(() => {

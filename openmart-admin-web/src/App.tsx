@@ -47,44 +47,24 @@ export default function App() {
       return;
     }
 
-    // Force signout if non-staff somehow gets logged in
-    const checkStaffSession = async () => {
+    // Trust the actual authenticated Supabase session. This keeps the admin
+    // dashboard aligned with the session state instead of hard-coding a
+    // staff-email naming convention.
+    const syncSession = async () => {
       if (!supabase) return;
       const { data: { session } } = await supabase.auth.getSession();
-      const email = session?.user?.email || '';
-      const isStaff = email.toLowerCase().includes('staff');
-      if (session && !isStaff) {
-        await supabase.auth.signOut();
-        setUser(null);
-        navigate('/login', { replace: true });
-      } else {
-        setUser(session?.user || null);
-      }
+      setUser(session?.user || null);
       setCheckingAuth(false);
     };
 
-    checkStaffSession();
+    syncSession();
 
     // Subscribe to auth state updates
     let subscription: any = null;
     if (supabase) {
       const { data } = supabase.auth.onAuthStateChange(async (_, session) => {
         if (session?.user) {
-          const userEmail = session.user.email || '';
-          
-          // Strict safety check: verify user email includes 'staff'
-          const isStaff = userEmail.toLowerCase().includes('staff');
-
-          if (supabase && session && !isStaff) {
-            await supabase.auth.signOut();
-            setUser(null);
-            navigate('/login', { replace: true });
-          } else {
-            setUser(session?.user || null);
-            if (!session) {
-              navigate('/login', { replace: true });
-            }
-          }
+          setUser(session.user);
         } else {
           setUser(null);
           navigate('/login', { replace: true });
@@ -112,23 +92,27 @@ export default function App() {
     }
   };
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (silent = false) => {
     if (!user) return;
-    setIsLoadingOrders(true);
+    if (!silent) {
+      setIsLoadingOrders(true);
+    }
     try {
       const data = await fetchOrders();
       setOrders(data);
     } catch (err) {
       console.error('Failed to load orders:', err);
     } finally {
-      setIsLoadingOrders(false);
+      if (!silent) {
+        setIsLoadingOrders(false);
+      }
     }
   }, [user]);
 
   const refreshAll = useCallback(() => {
     if (!user) return;
     loadProducts();
-    loadOrders();
+    loadOrders(false);
   }, [user, loadOrders]);
 
   // Reload products/orders whenever the user changes/logs in
@@ -145,7 +129,7 @@ export default function App() {
   // 30-second polling fallback — orders always refresh even if Realtime silently drops
   useEffect(() => {
     if (!user) return;
-    const poll = setInterval(() => loadOrders(), 30000);
+    const poll = setInterval(() => loadOrders(true), 30000);
     return () => clearInterval(poll);
   }, [user, loadOrders]);
 
@@ -166,13 +150,13 @@ export default function App() {
         .channel(`orders-realtime-${Date.now()}`) // unique name avoids stale channel conflicts
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'orders' },
+          { event: '*', schema: 'public', table: 'orders' },
           (payload) => {
             console.log('Realtime change detected in orders table:', payload);
-            loadOrders();
+            loadOrders(true);
 
             // Play chime — read from ref so we never need soundEnabled in deps
-            if (soundEnabledRef.current) {
+            if (payload.eventType === 'INSERT' && soundEnabledRef.current) {
               try {
                 const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
                 const osc1 = audioCtx.createOscillator();

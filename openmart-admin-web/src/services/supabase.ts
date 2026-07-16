@@ -80,6 +80,7 @@ export async function fetchProducts(): Promise<Product[]> {
     console.warn('Supabase is not configured. Returning empty product list.');
     return [];
   }
+  await supabase.auth.getSession();
   const { data, error } = await supabase
     .from('products')
     .select('*')
@@ -94,6 +95,7 @@ export async function fetchProducts(): Promise<Product[]> {
 
 export async function addProduct(product: Omit<Product, 'id' | 'isLowStock' | 'dateAdded' | 'lastUpdated'>): Promise<Product | null> {
   if (!supabase) return null;
+  await supabase.auth.getSession();
   const id = `inv_${Date.now()}`;
   const quantity = Number(product.quantity) || 0;
   const price = Number(product.price) || 0;
@@ -126,6 +128,7 @@ export async function updateProduct(
   updates: Partial<Omit<Product, 'id' | 'dateAdded' | 'lastUpdated'>>
 ): Promise<Product | null> {
   if (!supabase) return null;
+  await supabase.auth.getSession();
 
   const quantity = updates.quantity !== undefined ? Number(updates.quantity) : undefined;
   const price = updates.price !== undefined ? Number(updates.price) : undefined;
@@ -158,6 +161,7 @@ export async function updateProduct(
 
 export async function deleteProduct(id: string): Promise<void> {
   if (!supabase) return;
+  await supabase.auth.getSession();
   const { error } = await supabase
     .from('products')
     .delete()
@@ -198,6 +202,7 @@ export async function fetchOrders(): Promise<Order[]> {
     console.warn('Supabase is not configured. Returning empty order list.');
     return [];
   }
+  await supabase.auth.getSession();
 
   // Prefer the camelCase order schema for the admin dashboard, then fall back to the older snake_case schema.
   let result = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
@@ -218,6 +223,7 @@ export async function fetchOrders(): Promise<Order[]> {
 
 export async function updateOrderStatus(orderId: string, status: Order['status']): Promise<Order | null> {
   if (!supabase) return null;
+  await supabase.auth.getSession();
   const now = new Date().toISOString();
 
   let result = await supabase
@@ -244,6 +250,7 @@ export async function updateOrderStatus(orderId: string, status: Order['status']
 
 export async function updatePaymentStatus(orderId: string, paymentStatus: Order['paymentStatus']): Promise<Order | null> {
   if (!supabase) return null;
+  await supabase.auth.getSession();
   const now = new Date().toISOString();
 
   let result = await supabase
@@ -276,6 +283,7 @@ export async function uploadProductImage(file: File): Promise<string> {
   if (!supabase) {
     throw new Error('Supabase client is not configured.');
   }
+  await supabase.auth.getSession();
 
   // Generate a unique file name
   const fileExt = file.name.split('.').pop() || 'png';
