@@ -129,7 +129,7 @@ export default function App() {
   // 30-second polling fallback — orders always refresh even if Realtime silently drops
   useEffect(() => {
     if (!user) return;
-    const poll = setInterval(() => loadOrders(true), 30000);
+    const poll = setInterval(() => loadOrders(true), 5000);
     return () => clearInterval(poll);
   }, [user, loadOrders]);
 
@@ -153,7 +153,7 @@ export default function App() {
           { event: '*', schema: 'public', table: 'orders' },
           (payload) => {
             console.log('Realtime change detected in orders table:', payload);
-            loadOrders(true);
+            void loadOrders(true);
 
             // Play chime — read from ref so we never need soundEnabled in deps
             if (payload.eventType === 'INSERT' && soundEnabledRef.current) {
@@ -189,6 +189,7 @@ export default function App() {
 
           if (status === 'SUBSCRIBED') {
             setRealtimeStatus('live');
+            void loadOrders(true);
           } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
             setRealtimeStatus('error');
             console.warn(`Orders channel ${status} — rebuilding in 3s...`);
@@ -202,6 +203,13 @@ export default function App() {
 
       return ch;
     };
+
+    // Prefer the existing signed-in session token for the realtime socket itself.
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!destroyed && session?.access_token && supabase) {
+        supabase.realtime.setAuth(session.access_token);
+      }
+    });
 
     let activeChannel = buildChannel();
 
