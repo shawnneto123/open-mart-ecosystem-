@@ -110,7 +110,6 @@ const useOrderStore = create(
 
             const dbRow = {
               ...(orderLocal.id ? { id: orderLocal.id } : {}),
-              user_id: orderLocal.user_id,
               items: orderLocal.items,
               status: orderLocal.status,
               paymentStatus: orderLocal.paymentStatus,
