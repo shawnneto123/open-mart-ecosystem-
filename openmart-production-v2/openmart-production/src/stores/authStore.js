@@ -27,23 +27,24 @@ const getStaffCredentials = () => {
  * Returns { phone, address } on success, or empty strings on failure.
  */
 const fetchUserProfile = async (userId) => {
-  if (!supabase || !userId) return { phone: '', address: '' };
+  if (!supabase || !userId) return { email: '', phone: '', address: '' };
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('name, phone, address, role')
+      .select('name, email, phone, address, role')
       .eq('id', userId)
       .single();
 
-    if (error || !data) return { phone: '', address: '' };
+    if (error || !data) return { email: '', phone: '', address: '' };
     return {
       name: data.name || '',
+      email: data.email || '',
       phone: data.phone || '',
       address: data.address || '',
       role: data.role || 'customer',
     };
   } catch {
-    return { phone: '', address: '' };
+    return { email: '', phone: '', address: '' };
   }
 };
 
@@ -85,7 +86,7 @@ export const useAuthStore = create(
             user: {
               id: data.user.id,
               name: profile.name || data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Customer',
-              email: data.user.email,
+              email: profile.email || data.user.email || '',
               role: profile.role || data.user.user_metadata?.role || 'customer',
               phone: profile.phone || data.user.phone || '',
               address: profile.address || data.user.user_metadata?.address || '',
@@ -137,6 +138,7 @@ export const useAuthStore = create(
             await supabase.from('profiles').upsert({
               id: user.id,
               name: trimmedName,
+              email: normalizedEmail,
               role: 'customer',
               phone: '',
               address: '',
@@ -236,6 +238,7 @@ export const useAuthStore = create(
           const { error: profileError } = await supabase.from('profiles').upsert({
             id: currentUser.id,
             name: updatedFields.name,
+            email: currentUser.email,
             phone: updatedFields.phone || '',
             address: updatedFields.address || '',
             updated_at: new Date().toISOString(),

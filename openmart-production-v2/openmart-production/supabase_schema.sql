@@ -46,6 +46,7 @@ CREATE POLICY "Allow authenticated staff delete products" ON public.products
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT,
+    email TEXT DEFAULT '',
     phone TEXT DEFAULT '',
     address TEXT DEFAULT '',
     role TEXT DEFAULT 'customer',

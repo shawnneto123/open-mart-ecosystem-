@@ -141,9 +141,20 @@ export default function App() {
     // destroyed flag stops the reconnect loop when the component unmounts
     let destroyed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let activeChannel: any = null;
 
-    const buildChannel = () => {
-      if (destroyed || !supabase) return;
+    const buildChannel = async () => {
+      if (destroyed || !supabase) return null;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setRealtimeStatus('error');
+        console.warn('No authenticated Supabase session available for realtime orders subscription.');
+        return null;
+      }
+
+      // Apply the authenticated token to the realtime socket before opening the channel.
+      supabase.realtime.setAuth(session.access_token);
       setRealtimeStatus('connecting');
 
       const ch = supabase
@@ -196,7 +207,9 @@ export default function App() {
             // Remove the broken channel then build a fresh one after a delay
             supabase?.removeChannel(ch).catch(() => null);
             reconnectTimer = setTimeout(() => {
-              if (!destroyed) buildChannel();
+              if (!destroyed) {
+                void buildChannel();
+              }
             }, 3000);
           }
         });
@@ -204,14 +217,9 @@ export default function App() {
       return ch;
     };
 
-    // Prefer the existing signed-in session token for the realtime socket itself.
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!destroyed && session?.access_token && supabase) {
-        supabase.realtime.setAuth(session.access_token);
-      }
+    void buildChannel().then((channel) => {
+      activeChannel = channel;
     });
-
-    let activeChannel = buildChannel();
 
     return () => {
       destroyed = true;

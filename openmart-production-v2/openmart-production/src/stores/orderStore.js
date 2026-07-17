@@ -12,6 +12,15 @@ const useOrderStore = create(
 
       // Actions
       fetchOrders: async () => {
+        const currentUser = useAuthStore.getState().user;
+
+        // Preserve the local order history when the customer is not authenticated.
+        // This prevents checkout-created orders from being wiped out by a remote
+        // fetch that returns no rows during guest/sessionless navigation.
+        if (!currentUser) {
+          return;
+        }
+
         if (!isSupabaseConfigured) return;
         try {
           if (supabase.auth) {
@@ -31,7 +40,7 @@ const useOrderStore = create(
 
           if (result.error) throw result.error;
           if (result.data) {
-            // Normalize both camelCase and snake_case DB rows for the UI
+            // Normalize both camelCase and snake_case DB rows for the UI.
             const mapped = result.data.map((o) => ({
               ...o,
               userId: o.userId ?? o.user_id ?? null,
@@ -43,7 +52,10 @@ const useOrderStore = create(
               paymentMethod: o.paymentMethod ?? o.payment_method ?? o.paymentMethod,
               customerInfo: o.customerInfo ?? o.customer_info ?? o.customerInfo,
             }));
-            set({ orders: mapped });
+
+            if (mapped.length > 0) {
+              set({ orders: mapped });
+            }
           }
         } catch (err) {
           console.error('Supabase fetch orders error:', err);
@@ -53,6 +65,17 @@ const useOrderStore = create(
       createOrder: async (orderData) => {
         const currentUser = useAuthStore.getState().user;
         const now = new Date().toISOString();
+
+        const logSupabaseInsertError = (label, error) => {
+          console.error(label, {
+            message: error?.message,
+            details: error?.details,
+            hint: error?.hint,
+            code: error?.code,
+            status: error?.status,
+            fullError: error,
+          });
+        };
 
         // Local state object uses camelCase (for UI display)
         const orderLocal = {
@@ -127,7 +150,7 @@ const useOrderStore = create(
 
               const { error: fallbackError } = await supabase.from('orders').insert([fallbackDbRow]);
               if (fallbackError) {
-                console.error('Supabase insert order error:', fallbackError);
+                logSupabaseInsertError('Supabase insert order error payload (fallback payload):', fallbackError);
               } else {
                 console.log('Order inserted to Supabase successfully with snake_case fallback:', orderLocal.id);
               }
@@ -135,7 +158,7 @@ const useOrderStore = create(
               console.log('Order inserted to Supabase successfully:', orderLocal.id);
             }
           } catch (err) {
-            console.error('Supabase insert order error:', err);
+            logSupabaseInsertError('Supabase insert order error payload:', err);
           }
         }
 
