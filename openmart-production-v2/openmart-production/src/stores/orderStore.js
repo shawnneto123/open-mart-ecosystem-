@@ -107,6 +107,7 @@ const useOrderStore = create(
             if (supabase.auth) {
               await supabase.auth.getSession();
             }
+
             // Prefer the camelCase schema used by the admin dashboard.
             const dbRow = {
               id: orderLocal.id,
@@ -126,9 +127,14 @@ const useOrderStore = create(
               reference: orderLocal.reference,
             };
 
-            const { error } = await supabase.from('orders').insert([dbRow]);
-            if (error) {
-              console.warn('CamelCase order insert failed, retrying with snake_case payload:', error);
+            const { data: camelData, error: camelError } = await supabase
+              .from('orders')
+              .insert([dbRow])
+              .select();
+
+            if (camelError) {
+              console.error('🔴 Supabase Insert Error Details:', camelError);
+              console.warn('CamelCase order insert failed, retrying with snake_case payload:', camelError);
 
               const fallbackDbRow = {
                 id: orderLocal.id,
@@ -148,17 +154,23 @@ const useOrderStore = create(
                 reference: orderLocal.reference,
               };
 
-              const { error: fallbackError } = await supabase.from('orders').insert([fallbackDbRow]);
+              const { data: fallbackData, error: fallbackError } = await supabase
+                .from('orders')
+                .insert([fallbackDbRow])
+                .select();
+
               if (fallbackError) {
                 logSupabaseInsertError('Supabase insert order error payload (fallback payload):', fallbackError);
-              } else {
-                console.log('Order inserted to Supabase successfully with snake_case fallback:', orderLocal.id);
+                throw new Error(fallbackError.message || 'Database rejected the order insert payload.');
               }
+
+              console.log('Order inserted to Supabase successfully with snake_case fallback:', orderLocal.id, fallbackData);
             } else {
-              console.log('Order inserted to Supabase successfully:', orderLocal.id);
+              console.log('Order inserted to Supabase successfully:', orderLocal.id, camelData);
             }
           } catch (err) {
             logSupabaseInsertError('Supabase insert order error payload:', err);
+            throw err;
           }
         }
 

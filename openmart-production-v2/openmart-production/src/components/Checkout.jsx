@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import useCartStore from '../stores/cartStore';
 import useOrderStore from '../stores/orderStore';
 import { useAuthStore } from '../stores/authStore';
+import { supabase } from '../utils/supabaseClient';
 import { getAvailablePaymentMethods, getWhatsAppLink, generateWhatsAppPaymentRequest } from '../utils/paymentIntegration';
 import { generateWhatsAppMessage } from '../utils/whatsappIntegration';
 import { ABUJA_DISTRICTS, getDeliveryRate } from '../utils/deliveryHelper';
@@ -27,6 +28,43 @@ export default function Checkout() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isPaystackSuccess, setIsPaystackSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !supabase) return;
+
+    let isMounted = true;
+
+    const syncProfileFromSupabase = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (!isMounted) return;
+
+      if (error) {
+        console.warn('Unable to fetch profile for checkout from Supabase:', error);
+        return;
+      }
+
+      if (!data) return;
+
+      setFormData((prev) => ({
+        ...prev,
+        name: data.name || prev.name || user?.name || '',
+        email: data.email || prev.email || user?.email || '',
+        phone: data.phone || prev.phone || '',
+        address: data.address || prev.address || '',
+      }));
+    };
+
+    void syncProfileFromSupabase();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, user?.name, user?.email]);
 
   const subtotal = getTotalPrice();
   const tax = subtotal * 0.075;
@@ -62,13 +100,21 @@ export default function Checkout() {
     }
 
     try {
+      const normalizedCustomerInfo = {
+        name: formData.name.trim(),
+        email: (formData.email || user?.email || '').trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        city: selectedDistrict,
+      };
+
       if (selectedPayment === 'paystack') {
         const PaystackPop = (await import('@paystack/inline-js')).default;
         const paystack = new PaystackPop();
         
         paystack.newTransaction({
           key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '',
-          email: formData.email || user?.email || "customer@openmart.com",
+          email: normalizedCustomerInfo.email || user?.email || "customer@openmart.com",
           amount: Math.round(total * 100), // Convert to Kobo
           currency: "NGN",
           ref: `OM-${Date.now()}`,
@@ -80,7 +126,7 @@ export default function Checkout() {
                 tax,
                 shippingCost: shipping,
                 total,
-                customerInfo: { ...formData, city: selectedDistrict },
+                customerInfo: normalizedCustomerInfo,
                 paymentMethod: 'Paystack',
                 status: 'Paid',
                 paymentStatus: 'paid',
@@ -113,7 +159,7 @@ export default function Checkout() {
         tax,
         shippingCost: shipping,
         total,
-        customerInfo: { ...formData, city: selectedDistrict },
+        customerInfo: normalizedCustomerInfo,
         paymentMethod: selectedPayment,
       });
 
@@ -157,8 +203,10 @@ export default function Checkout() {
 
         navigate('/orders', { state: { orderId: order.id } });
       }, 1500);
-    } catch (err) {
-      setError(err.message || 'Failed to create order');
+    } catch (error) {
+      console.error('🔴 Checkout Order Submission Failed:', error);
+      alert('Failed to place order: ' + (error?.message || error));
+      setError(error?.message || 'Failed to create order');
       setLoading(false);
     }
   };
