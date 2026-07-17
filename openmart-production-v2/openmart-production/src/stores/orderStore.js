@@ -108,66 +108,34 @@ const useOrderStore = create(
               await supabase.auth.getSession();
             }
 
-            // Prefer the camelCase schema used by the admin dashboard.
             const dbRow = {
-              id: orderLocal.id,
+              ...(orderLocal.id ? { id: orderLocal.id } : {}),
               user_id: orderLocal.user_id,
               items: orderLocal.items,
               status: orderLocal.status,
-              paymentStatus: orderLocal.paymentStatus,
-              createdAt: now,
-              updatedAt: now,
+              payment_status: orderLocal.paymentStatus,
               subtotal: orderLocal.subtotal,
               tax: orderLocal.tax,
-              shippingCost: orderLocal.shippingCost,
+              shipping_cost: orderLocal.shippingCost,
               total: orderLocal.total,
-              paymentMethod: orderLocal.paymentMethod,
-              customerInfo: orderLocal.customerInfo,
+              payment_method: orderLocal.paymentMethod,
+              customer_info: orderLocal.customerInfo,
               notes: orderLocal.notes,
               reference: orderLocal.reference,
             };
 
-            const { data: camelData, error: camelError } = await supabase
+            const { data, error } = await supabase
               .from('orders')
               .insert([dbRow])
               .select();
 
-            if (camelError) {
-              console.error('🔴 Supabase Insert Error Details:', camelError);
-              console.warn('CamelCase order insert failed, retrying with snake_case payload:', camelError);
-
-              const fallbackDbRow = {
-                id: orderLocal.id,
-                user_id: orderLocal.user_id,
-                items: orderLocal.items,
-                status: orderLocal.status,
-                payment_status: orderLocal.paymentStatus,
-                created_at: now,
-                updated_at: now,
-                subtotal: orderLocal.subtotal,
-                tax: orderLocal.tax,
-                shipping_cost: orderLocal.shippingCost,
-                total: orderLocal.total,
-                payment_method: orderLocal.paymentMethod,
-                customer_info: orderLocal.customerInfo,
-                notes: orderLocal.notes,
-                reference: orderLocal.reference,
-              };
-
-              const { data: fallbackData, error: fallbackError } = await supabase
-                .from('orders')
-                .insert([fallbackDbRow])
-                .select();
-
-              if (fallbackError) {
-                logSupabaseInsertError('Supabase insert order error payload (fallback payload):', fallbackError);
-                throw new Error(fallbackError.message || 'Database rejected the order insert payload.');
-              }
-
-              console.log('Order inserted to Supabase successfully with snake_case fallback:', orderLocal.id, fallbackData);
-            } else {
-              console.log('Order inserted to Supabase successfully:', orderLocal.id, camelData);
+            if (error) {
+              console.error('🔴 Supabase Insert Error Details:', error);
+              logSupabaseInsertError('Supabase insert order error payload:', error);
+              throw new Error(error.message || 'Database rejected the order insert payload.');
             }
+
+            console.log('Order inserted to Supabase successfully:', orderLocal.id, data);
           } catch (err) {
             logSupabaseInsertError('Supabase insert order error payload:', err);
             throw err;
