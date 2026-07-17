@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useOrderStore } from '../stores/orderStore';
+import { supabase } from '../utils/supabaseClient';
 import { User, Phone, MapPin, KeyRound, ShoppingBag, CreditCard, ChevronRight, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -31,6 +32,33 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !supabase) return;
+
+    const fetchLatestProfile = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.warn('Unable to fetch latest profile from Supabase:', error);
+        return;
+      }
+
+      if (!data) return;
+
+      setProfileData({
+        name: data.name || user.name || '',
+        phone: data.phone || '',
+        address: data.address || '',
+      });
+    };
+
+    void fetchLatestProfile();
+  }, [user?.id, user?.name]);
 
   // Calculate customer orders & statistics
   const customerOrders = useMemo(() => {
