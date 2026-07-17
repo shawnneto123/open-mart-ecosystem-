@@ -42,7 +42,8 @@ export default function App() {
 
   // Listen to Auth State changes
   useEffect(() => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setCheckingAuth(false);
       return;
     }
@@ -51,8 +52,7 @@ export default function App() {
     // dashboard aligned with the session state instead of hard-coding a
     // staff-email naming convention.
     const syncSession = async () => {
-      if (!supabase) return;
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await client.auth.getSession();
       setUser(session?.user || null);
       setCheckingAuth(false);
     };
@@ -61,17 +61,15 @@ export default function App() {
 
     // Subscribe to auth state updates
     let subscription: any = null;
-    if (supabase) {
-      const { data } = supabase.auth.onAuthStateChange(async (_, session) => {
-        if (session?.user) {
-          setUser(session.user);
-        } else {
-          setUser(null);
-          navigate('/login', { replace: true });
-        }
-      });
-      subscription = data.subscription;
-    }
+    const { data } = client.auth.onAuthStateChange(async (_, session) => {
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+        navigate('/login', { replace: true });
+      }
+    });
+    subscription = data.subscription;
 
     return () => {
       subscription?.unsubscribe();
@@ -218,7 +216,7 @@ export default function App() {
         client.removeChannel(channel).catch(() => null);
       }
     };
-  }, [user?.id]);
+  }, [user?.id, loadOrders]);
 
   // Modal Actions
   const handleOpenAddModal = () => {

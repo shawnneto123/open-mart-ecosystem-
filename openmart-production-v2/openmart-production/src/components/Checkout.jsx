@@ -29,6 +29,20 @@ export default function Checkout() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isPaystackSuccess, setIsPaystackSuccess] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.id || !supabase) return;
@@ -129,7 +143,11 @@ export default function Checkout() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!isOnline) {
+      setError('You are currently offline. Please check your connection and try again.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -311,13 +329,36 @@ export default function Checkout() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-gray-900 mb-8">Checkout</h1>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex gap-3">
-            <AlertCircle className="text-red-500 flex-shrink-0" />
+        {/* Offline Connection Alert */}
+        {!isOnline && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex gap-3 text-amber-900 shadow-sm animate-pulse">
+            <AlertCircle className="text-amber-600 flex-shrink-0" />
             <div>
-              <h3 className="font-semibold text-red-900">Error</h3>
-              <p className="text-red-700">{error}</p>
+              <h3 className="font-bold text-amber-900">Offline Mode Active</h3>
+              <p className="text-xs text-amber-800">You are currently disconnected. Please restore your internet connection to place your order.</p>
             </div>
+          </div>
+        )}
+
+        {/* Error Alert with Retry button */}
+        {error && (
+          <div className="mb-6 p-5 bg-red-50 border border-red-200 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+            <div className="flex gap-3">
+              <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-bold text-red-900">Order Placement Failed</h3>
+                <p className="text-xs text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
+            {isOnline && (
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex-shrink-0 shadow-sm"
+              >
+                Retry Checkout
+              </button>
+            )}
           </div>
         )}
 
@@ -325,7 +366,7 @@ export default function Checkout() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
             {/* Billing Information */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Billing Information</h2>
               <div className="space-y-4">
                 <div>
@@ -405,7 +446,7 @@ export default function Checkout() {
             </div>
 
             {/* Payment Method */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Payment Method</h2>
               <div className="space-y-3">
                 {paymentMethods.map((method) => (
@@ -490,16 +531,16 @@ export default function Checkout() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+              disabled={loading || !isOnline}
+              className="w-full bg-green-600 text-white font-bold py-3.5 rounded-2xl hover:bg-green-700 transition-all duration-200 shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing...' : `Complete Order - ₦${total.toLocaleString()}`}
+              {loading ? 'Processing Order...' : !isOnline ? 'Waiting for Connection...' : `Complete Order - ₦${total.toLocaleString()}`}
             </button>
           </form>
 
           {/* Order Summary */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm p-6 sticky top-4">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sticky top-4">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Order Summary</h2>
               <div className="space-y-2 mb-4 pb-4 border-b max-h-64 overflow-y-auto">
                 {items.map((item) => (

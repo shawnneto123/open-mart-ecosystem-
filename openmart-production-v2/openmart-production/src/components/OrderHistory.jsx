@@ -21,6 +21,7 @@ export default function OrderHistory() {
   const { orders, fetchOrders } = useOrderStore();
   const user = useAuthStore((state) => state.user);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
     fetchOrders();
@@ -338,7 +339,13 @@ export default function OrderHistory() {
                             order.paymentStatus.slice(1)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm">
+                      <td className="px-6 py-4 text-sm flex gap-2">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                        >
+                          View Details
+                        </button>
                         <button
                           onClick={() => handlePrintInvoice(order)}
                           className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
@@ -354,55 +361,166 @@ export default function OrderHistory() {
           </div>
         )}
 
-        {/* Order Details - Expandable */}
-        <div className="mt-8 space-y-4">
-          {filteredOrders.slice(0, 3).map((order) => (
-            <details
-              key={order.id}
-              className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition"
-            >
-              <summary className="font-semibold text-gray-900">
-                Order {order.id} - {order.customerInfo?.name} - ₦{order.total.toFixed(2)}
-              </summary>
-              <div className="mt-4 space-y-4 text-sm">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-gray-600">Items</p>
-                    <p className="font-semibold text-gray-900">{order.items.length} items</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Payment Method</p>
-                    <p className="font-semibold text-gray-900 capitalize">
-                      {order.paymentMethod || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Delivery Address</p>
-                    <p className="font-semibold text-gray-900">
-                      {order.customerInfo?.address || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Contact</p>
-                    <p className="font-semibold text-gray-900">
-                      {order.customerInfo?.phone || 'N/A'}
-                    </p>
-                  </div>
-                </div>
+        {/* Slide-Up Detail Modal Backdrop */}
+        {selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black bg-opacity-40 backdrop-blur-sm transition-opacity">
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col p-6 animate-slide-up sm:animate-fade-in border border-gray-100">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b border-gray-100 pb-4 mb-4">
                 <div>
-                  <p className="text-gray-600 mb-2">Items:</p>
-                  <ul className="space-y-1">
-                    {order.items.map((item, idx) => (
-                      <li key={idx} className="text-gray-700">
-                        • {item.name} x{item.quantity} - ₦{(item.price * item.quantity).toFixed(2)}
-                      </li>
-                    ))}
-                  </ul>
+                  <h3 className="font-extrabold text-gray-900 text-xl">Order Details</h3>
+                  <p className="text-xs text-gray-500 mt-1">ID: #{selectedOrder.id}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Progress Timeline */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4 mb-6">
+                <h4 className="font-bold text-xs text-green-800 uppercase tracking-wider mb-3">Order Status Lifecycle</h4>
+                <div className="relative mt-4 mb-2">
+                  <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-200 -translate-y-1/2 rounded-full"></div>
+                  {/* Progress fill */}
+                  <div 
+                    className="absolute top-1/2 left-0 h-1 bg-green-600 -translate-y-1/2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: selectedOrder.status === 'completed' 
+                        ? '100%' 
+                        : selectedOrder.status === 'confirmed' 
+                          ? '50%' 
+                          : '0%' 
+                    }}
+                  ></div>
+                  <div className="relative flex justify-between">
+                    <div className="flex flex-col items-center">
+                      <div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center font-bold text-xxs ring-4 ring-white shadow-sm z-10">
+                        ✓
+                      </div>
+                      <span className="text-xxs font-semibold text-gray-800 mt-1">Pending</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xxs ring-4 ring-white shadow-sm z-10 ${
+                        selectedOrder.status === 'confirmed' || selectedOrder.status === 'completed'
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {selectedOrder.status === 'confirmed' || selectedOrder.status === 'completed' ? '✓' : '2'}
+                      </div>
+                      <span className={`text-xxs font-semibold mt-1 ${
+                        selectedOrder.status === 'confirmed' || selectedOrder.status === 'completed' 
+                          ? 'text-gray-800' 
+                          : 'text-gray-400'
+                      }`}>
+                        Confirmed
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xxs ring-4 ring-white shadow-sm z-10 ${
+                        selectedOrder.status === 'completed' 
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {selectedOrder.status === 'completed' ? '✓' : '3'}
+                      </div>
+                      <span className={`text-xxs font-semibold mt-1 ${
+                        selectedOrder.status === 'completed' ? 'text-gray-800' : 'text-gray-400'
+                      }`}>
+                        Delivered
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </details>
-          ))}
-        </div>
+
+              {/* Details Sections */}
+              <div className="space-y-4 text-sm flex-grow">
+                {/* Items List */}
+                <div>
+                  <h4 className="font-bold text-gray-700 border-b border-gray-100 pb-1 mb-2">Items Summary</h4>
+                  <div className="space-y-2">
+                    {selectedOrder.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs">
+                        <span className="text-gray-800 font-medium">
+                          {item.name} <span className="text-gray-500 font-normal">x{item.quantity}</span>
+                        </span>
+                        <span className="font-semibold text-gray-900">₦{((item.price || 0) * item.quantity).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment Summary */}
+                <div className="bg-gray-50 rounded-xl p-3 text-xs space-y-1.5">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Subtotal:</span>
+                    <span>₦{(selectedOrder.subtotal || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>VAT (7.5%):</span>
+                    <span>₦{(selectedOrder.tax || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Delivery Fee ({selectedOrder.customerInfo?.city || 'Abuja'}):</span>
+                    <span>₦{(selectedOrder.shippingCost || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-900 font-bold border-t border-gray-200 pt-1.5 mt-1.5 text-sm">
+                    <span>Total Amount:</span>
+                    <span className="text-green-600">₦{(selectedOrder.total || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Customer & Delivery */}
+                <div>
+                  <h4 className="font-bold text-gray-700 border-b border-gray-100 pb-1 mb-2">Delivery & Contact</h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="text-gray-500 font-medium">Customer Name</p>
+                      <p className="font-semibold text-gray-800">{selectedOrder.customerInfo?.name || 'Guest'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Phone Number</p>
+                      <p className="font-semibold text-gray-800">{selectedOrder.customerInfo?.phone || 'N/A'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-gray-500 font-medium">Delivery Address</p>
+                      <p className="font-semibold text-gray-800">
+                        {selectedOrder.customerInfo?.address || 'N/A'}, {selectedOrder.customerInfo?.city || 'Abuja'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Payment Method</p>
+                      <p className="font-semibold text-gray-800 capitalize">{selectedOrder.paymentMethod || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Payment Status</p>
+                      <p className="font-semibold text-gray-800 capitalize">{selectedOrder.paymentStatus || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex gap-3 border-t border-gray-100 pt-4 mt-6">
+                <button
+                  onClick={() => handlePrintInvoice(selectedOrder)}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-xl text-xs transition shadow-sm text-center"
+                >
+                  Print Receipt
+                </button>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 rounded-xl text-xs transition text-center"
+                >
+                  Close Details
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

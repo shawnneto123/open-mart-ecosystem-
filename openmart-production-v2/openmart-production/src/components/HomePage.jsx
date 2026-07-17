@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { Search, ChevronRight, Zap, Truck, Shield, Clock } from 'lucide-react'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { useCartStore } from '../stores/cartStore'
+import useOrderStore from '../stores/orderStore'
+import useAuthStore from '../stores/authStore'
 import { getCategoryEmoji, getAllCategories } from '../utils/categoryHelper'
 import { getProductImageUrl, getFallbackImageUrl } from '../utils/imageHelper'
 import { motion } from 'framer-motion'
@@ -9,24 +11,73 @@ import { motion } from 'framer-motion'
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState(null)
+  const [sortBy, setSortBy] = useState('default')
+  const [showInStockOnly, setShowInStockOnly] = useState(false)
+
   const items = useInventoryStore((state) => state.items)
+  const isLoading = useInventoryStore((state) => state.isLoading)
   const cartItems = useCartStore((state) => state.items)
   const addToCart = useCartStore((state) => state.addToCart)
   const updateQuantity = useCartStore((state) => state.updateQuantity)
   const fetchInventory = useInventoryStore((state) => state.fetchInventory)
 
+  const { orders, fetchOrders: fetchOrdersHistory } = useOrderStore()
+  const user = useAuthStore((state) => state.user)
+
   useEffect(() => {
     fetchInventory()
   }, [fetchInventory])
 
-  // Filter items based on search and category
+  useEffect(() => {
+    fetchOrdersHistory()
+  }, [fetchOrdersHistory, user])
+
+  // Active Order Tracking Selector
+  const activeOrder = useMemo(() => {
+    if (!user) return null;
+    const normalizedUserEmail = String(user.email || '').trim().toLowerCase();
+    return orders.find((order) => {
+      const orderUserId = order.userId ?? order.user_id ?? null;
+      const orderEmail = String(order.customerInfo?.email || '').trim().toLowerCase();
+      const isActive = order.status === 'pending' || order.status === 'confirmed';
+      return isActive && (orderEmail === normalizedUserEmail || (orderUserId && orderUserId === user.id));
+    });
+  }, [orders, user]);
+
+  // Filter and sort items based on search, category, stock, and sorting dropdown
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = !selectedCategory || item.category === selectedCategory
-      return matchesSearch && matchesCategory
-    })
-  }, [items, searchQuery, selectedCategory])
+    let result = [...items]
+
+    // 1. Search Query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter((item) =>
+        item.name.toLowerCase().includes(query) ||
+        (item.category && item.category.toLowerCase().includes(query))
+      )
+    }
+
+    // 2. Category
+    if (selectedCategory) {
+      result = result.filter((item) => item.category === selectedCategory)
+    }
+
+    // 3. In Stock Only
+    if (showInStockOnly) {
+      result = result.filter((item) => item.quantity > 0)
+    }
+
+    // 4. Sorting
+    if (sortBy === 'price-asc') {
+      result.sort((a, b) => a.price - b.price)
+    } else if (sortBy === 'price-desc') {
+      result.sort((a, b) => b.price - a.price)
+    } else if (sortBy === 'name-asc') {
+      result.sort((a, b) => a.name.localeCompare(b.name))
+    }
+
+    return result
+  }, [items, searchQuery, selectedCategory, showInStockOnly, sortBy])
 
   const categories = getAllCategories()
   const lowStockItems = useMemo(
@@ -99,6 +150,63 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Active Order Card */}
+      {activeOrder && (
+        <div className="max-w-7xl mx-auto px-4 mt-6">
+          <div className="bg-gradient-to-r from-emerald-50 to-green-100 border border-green-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+              <div>
+                <span className="text-xs font-bold text-green-700 uppercase tracking-wider bg-green-200 bg-opacity-50 px-2.5 py-1 rounded-full">
+                  Active Order Tracking
+                </span>
+                <h3 className="font-extrabold text-gray-900 text-lg mt-2">Order #{activeOrder.id}</h3>
+                <p className="text-xs text-gray-600">Placed on {new Date(activeOrder.createdAt).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-700">Status:</span>
+                <span className="text-sm font-bold text-green-700 capitalize bg-white px-3 py-1 rounded-full border border-green-200 shadow-sm">
+                  {activeOrder.status}
+                </span>
+              </div>
+            </div>
+            
+            {/* Timeline visualization */}
+            <div className="relative mt-6 mb-2">
+              <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-200 -translate-y-1/2 rounded-full"></div>
+              {/* Progress fill */}
+              <div 
+                className="absolute top-1/2 left-0 h-1 bg-green-600 -translate-y-1/2 rounded-full transition-all duration-500"
+                style={{ width: activeOrder.status === 'confirmed' ? '50%' : '15%' }}
+              ></div>
+              <div className="relative flex justify-between">
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center font-bold text-xs ring-4 ring-white shadow-sm z-10">
+                    ✓
+                  </div>
+                  <span className="text-xs font-semibold text-gray-800 mt-2">Pending</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ring-4 ring-white shadow-sm z-10 ${
+                    activeOrder.status === 'confirmed' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {activeOrder.status === 'confirmed' ? '✓' : '2'}
+                  </div>
+                  <span className={`text-xs font-semibold mt-2 ${activeOrder.status === 'confirmed' ? 'text-gray-800' : 'text-gray-400'}`}>
+                    Confirmed
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-xs ring-4 ring-white shadow-sm z-10">
+                    3
+                  </div>
+                  <span className="text-xs font-semibold text-gray-400 mt-2">Delivered</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Categories */}
       <section className="max-w-7xl mx-auto py-8 px-4">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Categories</h2>
@@ -109,10 +217,10 @@ export default function HomePage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
-              className={`p-4 rounded-xl text-center transition ${
+              className={`p-4 rounded-2xl text-center transition-all border duration-200 ${
                 selectedCategory === category
-                  ? 'bg-green-600 text-white shadow-lg'
-                  : 'bg-white text-gray-900 border border-gray-200 hover:shadow-md'
+                  ? 'bg-green-600 text-white shadow-lg border-transparent'
+                  : 'bg-white text-gray-900 border-gray-200 hover:shadow-md'
               }`}
             >
               <div className="text-3xl mb-2">{getCategoryEmoji(category)}</div>
@@ -125,7 +233,7 @@ export default function HomePage() {
       {/* Low Stock Alert */}
       {lowStockItems.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 mb-8">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start space-x-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start space-x-3 shadow-sm">
             <Zap className="text-amber-600 mt-1" size={20} />
             <div>
               <h3 className="font-semibold text-amber-900">Low Stock Items</h3>
@@ -140,30 +248,81 @@ export default function HomePage() {
 
       {/* Products Grid */}
       <section className="max-w-7xl mx-auto px-4 pb-16">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
-            {selectedCategory ? `${selectedCategory}` : 'All Products'}
-          </h2>
-          {filteredItems.length > 0 && (
-            <p className="text-sm text-gray-600">{filteredItems.length} products</p>
-          )}
+        {/* Sticky Premium Discovery Toolbar */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm sticky top-4 z-20">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">
+              {selectedCategory ? `${selectedCategory}` : 'All Products'}
+            </h2>
+            <span className="text-xs font-semibold bg-green-50 text-green-700 border border-green-200 px-2.5 py-0.5 rounded-full">
+              {filteredItems.length} {filteredItems.length === 1 ? 'product' : 'products'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Sort dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500">Sort By:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-green-500 text-gray-700 cursor-pointer shadow-sm hover:border-gray-400 transition"
+              >
+                <option value="default">Default</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+                <option value="name-asc">Name: A to Z</option>
+              </select>
+            </div>
+
+            {/* In Stock filter chip */}
+            <button
+              onClick={() => setShowInStockOnly(!showInStockOnly)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition shadow-sm ${
+                showInStockOnly
+                  ? 'bg-green-50 border-green-300 text-green-700 font-bold'
+                  : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              In Stock Only
+            </button>
+          </div>
         </div>
 
-        {filteredItems.length === 0 ? (
+        {isLoading ? (
+          /* Premium Skeleton Loader Grid */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div key={idx} className="bg-white rounded-2xl overflow-hidden border border-gray-150 p-4 flex flex-col justify-between h-[380px] space-y-4 animate-pulse shadow-sm">
+                <div className="bg-gray-200 h-40 rounded-xl w-full"></div>
+                <div className="space-y-2 flex-grow mt-2">
+                  <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mt-4"></div>
+                </div>
+                <div className="h-10 bg-gray-200 rounded-xl w-full mt-auto"></div>
+              </div>
+            ))}
+          </div>
+        ) : filteredItems.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-16"
+            className="text-center py-16 bg-white border border-gray-100 rounded-2xl shadow-sm p-8"
           >
-            <p className="text-gray-600 text-lg mb-4">No products found</p>
+            <div className="text-5xl mb-4">🔍</div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">No products found</h3>
+            <p className="text-gray-500 text-sm mb-6">Try adjusting your filters or search terms to find what you're looking for.</p>
             <button
               onClick={() => {
                 setSearchQuery('')
                 setSelectedCategory(null)
+                setSortBy('default')
+                setShowInStockOnly(false)
               }}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition shadow-md"
             >
-              Clear Filters
+              Reset Filters
             </button>
           </motion.div>
         ) : (
@@ -176,7 +335,7 @@ export default function HomePage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.2 }}
-                  className="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition group flex flex-col justify-between"
+                  className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 group flex flex-col justify-between animate-fade-in"
                 >
                   {/* Image & Header */}
                   <div>
