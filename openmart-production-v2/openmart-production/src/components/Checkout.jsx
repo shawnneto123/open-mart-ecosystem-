@@ -6,8 +6,9 @@ import useOrderStore from '../stores/orderStore';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../utils/supabaseClient';
 import { getAvailablePaymentMethods, getWhatsAppLink, generateWhatsAppPaymentRequest } from '../utils/paymentIntegration';
-import { generateWhatsAppMessage } from '../utils/whatsappIntegration';
 import { ABUJA_DISTRICTS, getDeliveryRate } from '../utils/deliveryHelper';
+
+const STAFF_PHONE = '2348091994873';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -72,6 +73,46 @@ export default function Checkout() {
   const total = subtotal + tax + shipping;
   const paymentMethods = getAvailablePaymentMethods();
 
+  const generateWhatsAppMessage = (order) => {
+    return `📱 *PAYMENT REQUEST*\n\n` +
+      `*Order ID:* #${order.reference || order.id}\n` +
+      `*Amount Due:* ₦${Number(order.total).toLocaleString('en-NG', { minimumFractionDigits: 2 })}\n\n` +
+      `---\n\n` +
+      `💸 *How to Pay:*\n\n` +
+      `*Option 1: Bank Transfer*\n` +
+      `• *Bank:* Moniepoint\n` +
+      `• *Account Number:* 8091994873\n` +
+      `• *Account Name:* Shawn Neto-Umeano\n\n` +
+      `*Option 2: USSD (Instant)*\n` +
+      `• Dial *929*01# or *737*01#\n\n` +
+      `---\n\n` +
+      `✅ *After Payment:*\n` +
+      `Please reply directly to this chat with:\n` +
+      `1️⃣ Your payment receipt/screenshot\n` +
+      `2️⃣ Your Order ID: \`${order.reference || order.id}\` *(Press & hold to copy)*\n\n` +
+      `Thank you for shopping with us! 🛍️`;
+  };
+
+  const openStaffWhatsAppPaymentRequest = async (order) => {
+    const message = generateWhatsAppMessage(order);
+    const encodedText = encodeURIComponent(message);
+    const waUrl = `https://wa.me/${STAFF_PHONE}?text=${encodedText}`;
+
+    try {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      const popup = window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+      if (!popup) {
+        window.location.href = waUrl;
+      }
+    } catch (error) {
+      console.warn('Unable to open WhatsApp payment request:', error);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -120,7 +161,7 @@ export default function Checkout() {
           ref: `OM-${Date.now()}`,
           onSuccess: async (transaction) => {
             try {
-              await createOrder({
+              const order = await createOrder({
                 items,
                 subtotal,
                 tax,
@@ -133,6 +174,8 @@ export default function Checkout() {
                 reference: transaction.reference,
                 notes: `Paystack Reference: ${transaction.reference}`
               });
+
+              await openStaffWhatsAppPaymentRequest(order);
 
               clearCart();
               setIsPaystackSuccess(true);
@@ -162,6 +205,8 @@ export default function Checkout() {
         customerInfo: normalizedCustomerInfo,
         paymentMethod: selectedPayment,
       });
+
+      await openStaffWhatsAppPaymentRequest(order);
 
       // Generate WhatsApp message
       const confirmMessage = generateWhatsAppMessage(order);
