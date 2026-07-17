@@ -134,31 +134,27 @@ export default function App() {
   }, [user, loadOrders]);
 
   // Real-time Supabase subscription for live orders
-  // Deps: [user, loadOrders] only — sound changes do NOT restart the channel
+  // This effect must only re-run when the actual authenticated user identity changes.
   useEffect(() => {
-    if (!supabase || !user) return;
+    const client = supabase;
+    if (!client || !user?.id) return;
 
-    // destroyed flag stops the reconnect loop when the component unmounts
-    let destroyed = false;
+    let isActive = true;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let activeChannel: any = null;
+    let channel: any = null;
 
-    const buildChannel = async () => {
-      if (destroyed || !supabase) return null;
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
+    const startChannel = async () => {
+      const { data: { session } } = await client.auth.getSession();
+      if (!session?.access_token || !isActive) {
         setRealtimeStatus('error');
-        console.warn('No authenticated Supabase session available for realtime orders subscription.');
         return null;
       }
 
-      // Apply the authenticated token to the realtime socket before opening the channel.
-      supabase.realtime.setAuth(session.access_token);
+      client.realtime.setAuth(session.access_token);
       setRealtimeStatus('connecting');
 
-      const ch = supabase
-        .channel(`orders-realtime-${Date.now()}`) // unique name avoids stale channel conflicts
+      channel = client
+        .channel(`orders-realtime-${user.id}-${Date.now()}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'orders' },
@@ -166,7 +162,6 @@ export default function App() {
             console.log('Realtime change detected in orders table:', payload);
             void loadOrders(true);
 
-            // Play chime — read from ref so we never need soundEnabled in deps
             if (payload.eventType === 'INSERT' && soundEnabledRef.current) {
               try {
                 const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -196,7 +191,7 @@ export default function App() {
         )
         .subscribe((status) => {
           console.log('Orders channel status:', status);
-          if (destroyed) return;
+          if (!isActive) return;
 
           if (status === 'SUBSCRIBED') {
             setRealtimeStatus('live');
@@ -204,29 +199,26 @@ export default function App() {
           } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
             setRealtimeStatus('error');
             console.warn(`Orders channel ${status} — rebuilding in 3s...`);
-            // Remove the broken channel then build a fresh one after a delay
-            supabase?.removeChannel(ch).catch(() => null);
             reconnectTimer = setTimeout(() => {
-              if (!destroyed) {
-                void buildChannel();
-              }
+              if (!isActive) return;
+              void startChannel();
             }, 3000);
           }
         });
 
-      return ch;
+      return channel;
     };
 
-    void buildChannel().then((channel) => {
-      activeChannel = channel;
-    });
+    void startChannel();
 
     return () => {
-      destroyed = true;
+      isActive = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (activeChannel && supabase) supabase.removeChannel(activeChannel).catch(() => null);
+      if (channel) {
+        client.removeChannel(channel).catch(() => null);
+      }
     };
-  }, [user, loadOrders]);
+  }, [user?.id]);
 
   // Modal Actions
   const handleOpenAddModal = () => {
