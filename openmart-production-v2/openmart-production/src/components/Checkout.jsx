@@ -151,10 +151,32 @@ export default function Checkout() {
     setLoading(true);
     setError('');
 
-    const validationError = validateForm();
+    let validationError = '';
+    let invalidElement = null;
+
+    if (!formData.name.trim()) {
+      validationError = 'Name is required';
+      invalidElement = document.getElementsByName('name')[0];
+    } else if (!formData.phone.trim()) {
+      validationError = 'Phone number is required';
+      invalidElement = document.getElementsByName('phone')[0];
+    } else if (!formData.address.trim()) {
+      validationError = 'Address is required';
+      invalidElement = document.getElementsByName('address')[0];
+    } else if (!selectedDistrict) {
+      validationError = 'Please select your Abuja delivery district';
+      invalidElement = document.getElementById('district-select');
+    } else if (items.length === 0) {
+      validationError = 'Cart is empty';
+    }
+
     if (validationError) {
       setError(validationError);
       setLoading(false);
+      if (invalidElement) {
+        invalidElement.focus();
+        invalidElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
 
@@ -431,6 +453,7 @@ export default function Checkout() {
                     Abuja District / Area *
                   </label>
                   <select
+                    id="district-select"
                     value={selectedDistrict}
                     onChange={(e) => setSelectedDistrict(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"

@@ -13,6 +13,9 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [sortBy, setSortBy] = useState('default')
   const [showInStockOnly, setShowInStockOnly] = useState(false)
+  const [touchStart, setTouchStart] = useState(0)
+  const [pullOffset, setPullOffset] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const items = useInventoryStore((state) => state.items)
   const isLoading = useInventoryStore((state) => state.isLoading)
@@ -23,6 +26,42 @@ export default function HomePage() {
 
   const { orders, fetchOrders: fetchOrdersHistory } = useOrderStore()
   const user = useAuthStore((state) => state.user)
+
+  const handleTouchStart = (e) => {
+    if (window.scrollY === 0) {
+      setTouchStart(e.touches[0].clientY)
+    }
+  }
+
+  const handleTouchMove = (e) => {
+    if (touchStart === 0 || window.scrollY > 0) return
+    const currentY = e.touches[0].clientY
+    const diff = currentY - touchStart
+    
+    if (diff > 0) {
+      const offset = Math.min(diff * 0.4, 80)
+      setPullOffset(offset)
+    }
+  }
+
+  const handleTouchEnd = async () => {
+    if (pullOffset > 50) {
+      setIsRefreshing(true)
+      setPullOffset(35)
+      try {
+        await Promise.all([fetchInventory(), fetchOrdersHistory()])
+      } catch (err) {
+        console.error("Refresh failed:", err)
+      } finally {
+        setIsRefreshing(false)
+        setPullOffset(0)
+        setTouchStart(0)
+      }
+    } else {
+      setPullOffset(0)
+      setTouchStart(0)
+    }
+  }
 
   useEffect(() => {
     fetchInventory()
@@ -96,7 +135,27 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
+    <div 
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 relative overflow-x-hidden"
+    >
+      {/* Pull-to-refresh spinner */}
+      {(pullOffset > 0 || isRefreshing) && (
+        <div 
+          className="fixed left-1/2 -translate-x-1/2 z-50 bg-white rounded-full p-2.5 shadow-md border border-gray-200 flex items-center justify-center transition-all duration-75"
+          style={{ top: `${Math.max(10, pullOffset - 25)}px` }}
+        >
+          <div className={`w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full ${isRefreshing ? 'animate-spin' : ''}`} />
+        </div>
+      )}
+
+      {/* Main Content Wrapper applying offset */}
+      <div 
+        style={{ transform: pullOffset > 0 ? `translateY(${pullOffset}px)` : 'none' }}
+        className="transition-transform duration-200"
+      >
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-green-600 to-emerald-600 text-white py-12 px-4">
         <div className="max-w-7xl mx-auto">
@@ -429,6 +488,7 @@ export default function HomePage() {
           </div>
         )}
       </section>
+      </div> {/* End Main Content Wrapper */}
     </div>
   )
 }
